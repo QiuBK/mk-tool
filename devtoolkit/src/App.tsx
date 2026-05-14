@@ -13,6 +13,7 @@ const CronTool = lazy(() => import('./tools/CronTool/CronTool'))
 const UrlTool = lazy(() => import('./tools/UrlTool/UrlTool'))
 const ColorTool = lazy(() => import('./tools/ColorTool/ColorTool'))
 const HashTool = lazy(() => import('./tools/HashTool/HashTool'))
+const ScraperTool = lazy(() => import('./tools/ScraperTool/ScraperTool'))
 import styles from './App.module.css'
 
 const TOOL_COMPONENTS: Record<string, React.LazyExoticComponent<React.FC>> = {
@@ -23,6 +24,7 @@ const TOOL_COMPONENTS: Record<string, React.LazyExoticComponent<React.FC>> = {
   url: UrlTool,
   color: ColorTool,
   hash: HashTool,
+  scraper: ScraperTool,
 }
 
 const isSidepanel = typeof window !== 'undefined' && window.location.pathname.includes('sidepanel')
@@ -32,7 +34,7 @@ export default function App() {
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.key >= '1' && e.key <= '7') {
+      if (e.ctrlKey && e.key >= '1' && e.key <= '8') {
         e.preventDefault()
         const index = parseInt(e.key) - 1
         if (TOOL_LIST[index]) {

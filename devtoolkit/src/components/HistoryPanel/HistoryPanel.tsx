@@ -12,6 +12,7 @@ const TOOL_LABELS: Record<ToolType, string> = {
   url: 'URL',
   color: '颜色',
   hash: '哈希',
+  scraper: '抓取',
 }
 
 export function HistoryPanel() {

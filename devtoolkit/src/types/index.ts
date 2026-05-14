@@ -1,4 +1,4 @@
-export type ToolType = 'json' | 'base64' | 'timestamp' | 'cron' | 'url' | 'color' | 'hash'
+export type ToolType = 'json' | 'base64' | 'timestamp' | 'cron' | 'url' | 'color' | 'hash' | 'scraper'
 
 export type ThemeMode = 'light' | 'dark' | 'system'
 
@@ -109,6 +109,28 @@ export interface HashResult {
   sha256?: string
 }
 
+export interface ScrapedTable {
+  headers: string[]
+  rows: string[][]
+  caption: string
+  source: 'table'
+}
+
+export interface ScrapedList {
+  items: string[]
+  label: string
+  source: 'ul' | 'ol'
+}
+
+export type ScrapedData = ScrapedTable | ScrapedList
+
+export interface ScrapeResult {
+  tables: ScrapedTable[]
+  lists: ScrapedList[]
+  url: string
+  title: string
+}
+
 export interface HistoryItem {
   id: string
   toolType: ToolType
@@ -163,6 +185,7 @@ export const TOOL_LIST: { type: ToolType; label: string; icon: string }[] = [
   { type: 'url', label: 'URL', icon: '%' },
   { type: 'color', label: '颜色', icon: '🎨' },
   { type: 'hash', label: '哈希', icon: '#' },
+  { type: 'scraper', label: '抓取', icon: '📊' },
 ]
 
 export const MAX_INPUT_SIZE = 1_048_576

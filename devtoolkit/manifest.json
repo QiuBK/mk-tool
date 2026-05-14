@@ -3,7 +3,7 @@
   "name": "DevToolKit",
   "version": "1.0.0",
   "description": "Integrated developer toolkit for Edge browser - JSON, Base64, Timestamp, Cron, URL, Color, Hash tools",
-  "permissions": ["storage", "sidePanel"],
+  "permissions": ["storage", "sidePanel", "activeTab", "scripting"],
   "side_panel": {
     "default_path": "src/sidepanel/index.html"
   },
