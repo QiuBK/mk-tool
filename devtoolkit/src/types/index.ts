@@ -139,6 +139,7 @@ export interface CapturedRequest {
   timestamp: number
   requestBody: string | null
   contentType: string | null
+  headers: Record<string, string>
   status: number | null
   tabId: number
 }

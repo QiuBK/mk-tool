@@ -187,6 +187,9 @@ export function requestToText(req: CapturedRequest): string {
   lines.push(`[${req.method}] ${req.url}`)
   if (req.status != null) lines.push(`Status: ${req.status}`)
   if (req.contentType) lines.push(`Content-Type: ${req.contentType}`)
+  if (req.headers && Object.keys(req.headers).length > 0) {
+    lines.push(`Headers: ${JSON.stringify(req.headers, null, 2)}`)
+  }
   if (req.requestBody) lines.push(`Body: ${req.requestBody}`)
   return lines.join('\n')
 }
@@ -214,6 +217,7 @@ export async function replayRequest(
   method: string,
   body: string | null,
   contentType: string | null,
+  headers: Record<string, string> = {},
 ): Promise<ReplayResponse> {
   if (typeof chrome === 'undefined' || !chrome.tabs || !chrome.scripting) {
     throw new Error('此功能仅在浏览器扩展中可用')
@@ -224,27 +228,47 @@ export async function replayRequest(
     throw new Error('无法获取当前标签页')
   }
 
-  const results = await chrome.scripting.executeScript({
-    target: { tabId: tab.id },
-    func: (fetchUrl: string, fetchMethod: string, fetchBody: string | null, fetchContentType: string | null) => {
-      return fetch(fetchUrl, {
-        method: fetchMethod,
-        headers: fetchContentType ? { 'Content-Type': fetchContentType } : undefined,
-        body: fetchBody || undefined,
-        credentials: 'include',
-      }).then(async (res) => {
-        const headers: Record<string, string> = {}
-        res.headers.forEach((v, k) => { headers[k] = v })
-        const body = await res.text()
-        return { status: res.status, statusText: res.statusText, headers, body }
-      })
-    },
-    args: [url, method, body, contentType],
-  })
-
-  if (!results || results.length === 0 || !results[0].result) {
-    throw new Error('请求发送失败')
+  if (tab.url?.startsWith('chrome://') || tab.url?.startsWith('edge://') || tab.url?.startsWith('about:')) {
+    throw new Error('无法在浏览器内部页面发送请求')
   }
 
-  return results[0].result as ReplayResponse
+  const results = await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    world: 'MAIN',
+    func: (fetchUrl: string, fetchMethod: string, fetchBody: string | null, fetchContentType: string | null, fetchHeaders: Record<string, string>) => {
+      const reqHeaders: Record<string, string> = { ...fetchHeaders }
+      if (fetchContentType && !reqHeaders['Content-Type'] && !reqHeaders['content-type']) {
+        reqHeaders['Content-Type'] = fetchContentType
+      }
+      return fetch(fetchUrl, {
+        method: fetchMethod,
+        headers: reqHeaders,
+        body: (fetchMethod !== 'GET' && fetchMethod !== 'HEAD' && fetchBody) ? fetchBody : undefined,
+        credentials: 'include',
+      }).then(async (res) => {
+        const respHeaders: Record<string, string> = {}
+        res.headers.forEach((v, k) => { respHeaders[k] = v })
+        const respBody = await res.text()
+        return { status: res.status, statusText: res.statusText, headers: respHeaders, body: respBody }
+      }).catch((err) => {
+        return { status: 0, statusText: err.message || 'Network Error', headers: {}, body: '' }
+      })
+    },
+    args: [url, method, body, contentType, headers],
+  })
+
+  if (!results || results.length === 0) {
+    throw new Error('请求发送失败：无法注入脚本')
+  }
+
+  const result = results[0].result as ReplayResponse | undefined
+  if (!result) {
+    throw new Error('请求发送失败：无返回结果')
+  }
+
+  if (result.status === 0) {
+    throw new Error(`网络请求失败：${result.statusText}`)
+  }
+
+  return result
 }

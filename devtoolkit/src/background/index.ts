@@ -1,5 +1,5 @@
 let popupWindowId: number | null = null
-const capturedRequests: Map<number, { id: string; url: string; method: string; type: 'xhr' | 'fetch'; timestamp: number; requestBody: string | null; contentType: string | null; status: number | null; tabId: number }[]> = new Map()
+const capturedRequests: Map<number, { id: string; url: string; method: string; type: 'xhr' | 'fetch'; timestamp: number; requestBody: string | null; contentType: string | null; headers: Record<string, string>; status: number | null; tabId: number }[]> = new Map()
 const MAX_CAPTURED = 200
 
 function applyMode(mode: string) {
@@ -129,6 +129,7 @@ chrome.webRequest.onBeforeRequest.addListener(
       timestamp: details.timeStamp,
       requestBody,
       contentType: null as string | null,
+      headers: {} as Record<string, string>,
       status: null as number | null,
       tabId: details.tabId,
     }
@@ -164,6 +165,15 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
     if (!list) return
     const entry = list.find((r) => r.id === `${details.requestId}-${details.timeStamp}`)
     if (entry && details.requestHeaders) {
+      const skipHeaders = new Set(['host', 'connection', 'content-length', 'accept-encoding'])
+      const headers: Record<string, string> = {}
+      details.requestHeaders.forEach((h) => {
+        const key = h.name.toLowerCase()
+        if (!skipHeaders.has(key) && h.value) {
+          headers[h.name] = h.value
+        }
+      })
+      entry.headers = headers
       const ct = details.requestHeaders.find((h) => h.name.toLowerCase() === 'content-type')
       if (ct) entry.contentType = ct.value || null
     }

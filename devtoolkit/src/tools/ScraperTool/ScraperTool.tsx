@@ -16,6 +16,8 @@ export function ScraperTool() {
   const [editMethod, setEditMethod] = useState('GET')
   const [editBody, setEditBody] = useState('')
   const [editContentType, setEditContentType] = useState('')
+  const [editHeaders, setEditHeaders] = useState<Record<string, string>>({})
+  const [editParams, setEditParams] = useState<Record<string, string>>({})
   const [replayResp, setReplayResp] = useState<ReplayResponse | null>(null)
   const [replayLoading, setReplayLoading] = useState(false)
   const [replayError, setReplayError] = useState('')
@@ -76,6 +78,8 @@ export function ScraperTool() {
     setEditMethod(req.method)
     setEditBody(req.requestBody || '')
     setEditContentType(req.contentType || 'application/json')
+    setEditHeaders(req.headers || {})
+    setEditParams(getUrlParams(req.url))
   }
 
   const handleStartEdit = () => {
@@ -83,6 +87,8 @@ export function ScraperTool() {
     setEditMode(true)
     setReplayResp(null)
     setReplayError('')
+    setEditHeaders(selectedReq.headers || {})
+    setEditParams(getUrlParams(selectedReq.url))
   }
 
   const handleReplay = async () => {
@@ -90,7 +96,7 @@ export function ScraperTool() {
     setReplayError('')
     setReplayResp(null)
     try {
-      const resp = await replayRequest(editUrl, editMethod, editBody || null, editContentType || null)
+      const resp = await replayRequest(editUrl, editMethod, editBody || null, editContentType || null, editHeaders)
       setReplayResp(resp)
     } catch (e) {
       setReplayError(e instanceof Error ? e.message : '请求失败')
@@ -147,21 +153,17 @@ export function ScraperTool() {
     }
   }
 
-  const [editParams, setEditParams] = useState<Record<string, string>>({})
-
-  useEffect(() => {
-    if (selectedReq && editMode) {
-      setEditParams(getUrlParams(selectedReq.url))
-    }
-  }, [selectedReq, editMode])
-
   const handleParamChange = (key: string, value: string) => {
-    setEditParams((prev) => ({ ...prev, [key]: value }))
-    const baseUrl = editUrl.split('?')[0]
-    const newParams = { ...editParams, [key]: value }
-    const u = new URL(baseUrl)
-    Object.entries(newParams).forEach(([k, v]) => u.searchParams.set(k, v))
-    setEditUrl(u.toString())
+    setEditParams((prev) => {
+      const next = { ...prev, [key]: value }
+      const baseUrl = editUrl.split('?')[0]
+      try {
+        const u = new URL(baseUrl)
+        Object.entries(next).forEach(([k, v]) => u.searchParams.set(k, v))
+        setEditUrl(u.toString())
+      } catch { /* ignore */ }
+      return next
+    })
   }
 
   const handleAddParam = () => {
@@ -172,6 +174,42 @@ export function ScraperTool() {
     setEditParams((prev) => {
       const next = { ...prev }
       delete next[key]
+      const baseUrl = editUrl.split('?')[0]
+      try {
+        const u = new URL(baseUrl)
+        Object.entries(next).forEach(([k, v]) => u.searchParams.set(k, v))
+        setEditUrl(u.toString())
+      } catch { /* ignore */ }
+      return next
+    })
+  }
+
+  const handleHeaderChange = (key: string, value: string) => {
+    setEditHeaders((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const handleAddHeader = () => {
+    setEditHeaders((prev) => ({ ...prev, [`Header-${Object.keys(prev).length + 1}`]: '' }))
+  }
+
+  const handleRemoveHeader = (key: string) => {
+    setEditHeaders((prev) => {
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
+  }
+
+  const handleHeaderKeyChange = (oldKey: string, newKey: string) => {
+    setEditHeaders((prev) => {
+      const next: Record<string, string> = {}
+      Object.entries(prev).forEach(([k, v]) => {
+        if (k === oldKey) {
+          next[newKey] = v
+        } else {
+          next[k] = v
+        }
+      })
       return next
     })
   }
@@ -295,6 +333,15 @@ export function ScraperTool() {
                               </div>
                             )}
                           </div>
+                          {Object.keys(selectedReq.headers || {}).length > 0 && (
+                            <div className={styles.apiDetailSection}>
+                              <div className={styles.apiDetailHeader}>
+                                <span>请求头</span>
+                                <CopyButton text={JSON.stringify(selectedReq.headers, null, 2)} label="复制" />
+                              </div>
+                              <pre className={styles.apiDetailPre}>{JSON.stringify(selectedReq.headers, null, 2)}</pre>
+                            </div>
+                          )}
                           {Object.keys(getUrlParams(selectedReq.url)).length > 0 && (
                             <div className={styles.apiDetailSection}>
                               <div className={styles.apiDetailHeader}>
@@ -342,26 +389,41 @@ export function ScraperTool() {
                             <input className={styles.editInput} value={editUrl} onChange={(e) => setEditUrl(e.target.value)} />
                           </div>
 
-                          <div className={styles.editRow}>
-                            <label className={styles.editLabel}>Content-Type</label>
-                            <input className={styles.editInput} value={editContentType} onChange={(e) => setEditContentType(e.target.value)} />
+                          <div className={styles.editSection}>
+                            <div className={styles.editSectionHeader}>
+                              <span>请求头</span>
+                              <button className={styles.smallBtn} onClick={handleAddHeader}>+ 添加</button>
+                            </div>
+                            {Object.entries(editHeaders).map(([key, val]) => (
+                              <div key={key} className={styles.editParamRow}>
+                                <input
+                                  className={styles.editParamKey}
+                                  value={key}
+                                  onChange={(e) => handleHeaderKeyChange(key, e.target.value)}
+                                />
+                                <input
+                                  className={styles.editParamVal}
+                                  value={val}
+                                  onChange={(e) => handleHeaderChange(key, e.target.value)}
+                                />
+                                <button className={styles.removeParamBtn} onClick={() => handleRemoveHeader(key)}>✕</button>
+                              </div>
+                            ))}
                           </div>
 
-                          {Object.keys(editParams).length > 0 && (
-                            <div className={styles.editSection}>
-                              <div className={styles.editSectionHeader}>
-                                <span>Query 参数</span>
-                                <button className={styles.smallBtn} onClick={handleAddParam}>+ 添加</button>
-                              </div>
-                              {Object.entries(editParams).map(([key, val]) => (
-                                <div key={key} className={styles.editParamRow}>
-                                  <input className={styles.editParamKey} value={key} readOnly />
-                                  <input className={styles.editParamVal} value={val} onChange={(e) => handleParamChange(key, e.target.value)} />
-                                  <button className={styles.removeParamBtn} onClick={() => handleRemoveParam(key)}>✕</button>
-                                </div>
-                              ))}
+                          <div className={styles.editSection}>
+                            <div className={styles.editSectionHeader}>
+                              <span>Query 参数</span>
+                              <button className={styles.smallBtn} onClick={handleAddParam}>+ 添加</button>
                             </div>
-                          )}
+                            {Object.entries(editParams).map(([key, val]) => (
+                              <div key={key} className={styles.editParamRow}>
+                                <input className={styles.editParamKey} value={key} readOnly />
+                                <input className={styles.editParamVal} value={val} onChange={(e) => handleParamChange(key, e.target.value)} />
+                                <button className={styles.removeParamBtn} onClick={() => handleRemoveParam(key)}>✕</button>
+                              </div>
+                            ))}
+                          </div>
 
                           {editMethod !== 'GET' && (
                             <div className={styles.editSection}>
@@ -393,6 +455,12 @@ export function ScraperTool() {
                                   {replayResp.status} {replayResp.statusText}
                                 </code>
                               </div>
+                              {Object.keys(replayResp.headers).length > 0 && (
+                                <div className={styles.apiDetailRow} style={{ flexDirection: 'column', gap: 2 }}>
+                                  <span className={styles.apiDetailLabel}>响应头</span>
+                                  <pre className={styles.apiDetailPre} style={{ maxHeight: 100 }}>{JSON.stringify(replayResp.headers, null, 2)}</pre>
+                                </div>
+                              )}
                               <pre className={styles.apiDetailPre}>{tryFormatJson(replayResp.body)}</pre>
                             </div>
                           )}
