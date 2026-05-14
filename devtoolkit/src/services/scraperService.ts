@@ -363,6 +363,16 @@ export async function getCapturedRequests(tabId: number): Promise<CapturedReques
     throw new Error('此功能仅在浏览器扩展中可用')
   }
 
+  const webRequestData = await new Promise<CapturedRequest[]>((resolve) => {
+    chrome.runtime.sendMessage({ type: 'getCapturedRequests', tabId }, (response) => {
+      if (chrome.runtime.lastError) {
+        resolve([])
+        return
+      }
+      resolve(response?.requests || [])
+    })
+  })
+
   let interceptorData: CapturedRequest[] = []
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
@@ -378,53 +388,54 @@ export async function getCapturedRequests(tabId: number): Promise<CapturedReques
     }
   } catch { /* ignore */ }
 
-  const webRequestData = await new Promise<CapturedRequest[]>((resolve) => {
-    chrome.runtime.sendMessage({ type: 'getCapturedRequests', tabId }, (response) => {
-      if (chrome.runtime.lastError) {
-        resolve([])
-        return
-      }
-      resolve(response?.requests || [])
-    })
-  })
-
-  if (interceptorData.length === 0 && webRequestData.length === 0) {
+  if (webRequestData.length === 0 && interceptorData.length === 0) {
     return []
   }
 
-  const allRequests = new Map<string, CapturedRequest>()
-
-  for (const r of webRequestData) {
-    allRequests.set(r.id, { ...r })
+  if (interceptorData.length === 0) {
+    return webRequestData
   }
 
+  const interceptorMap = new Map<string, CapturedRequest>()
   for (const r of interceptorData) {
-    const existing = allRequests.get(r.id)
-    if (existing) {
-      if (Object.keys(r.headers || {}).length > Object.keys(existing.headers || {}).length) {
-        existing.headers = r.headers
+    interceptorMap.set(`${r.method}:${r.url}`, r)
+  }
+
+  const result: CapturedRequest[] = []
+  for (const wr of webRequestData) {
+    const key = `${wr.method}:${wr.url}`
+    const ir = interceptorMap.get(key)
+    if (ir) {
+      const merged = { ...wr }
+      if (Object.keys(ir.headers || {}).length > Object.keys(merged.headers || {}).length) {
+        merged.headers = ir.headers
       }
-      if (Object.keys(r.responseHeaders || {}).length > Object.keys(existing.responseHeaders || {}).length) {
-        existing.responseHeaders = r.responseHeaders
+      if (Object.keys(ir.responseHeaders || {}).length > Object.keys(merged.responseHeaders || {}).length) {
+        merged.responseHeaders = ir.responseHeaders
       }
-      if (r.responseBody && !existing.responseBody) {
-        existing.responseBody = r.responseBody
+      if (ir.responseBody && !merged.responseBody) {
+        merged.responseBody = ir.responseBody
       }
-      if (r.requestBody && !existing.requestBody) {
-        existing.requestBody = r.requestBody
+      if (ir.requestBody && !merged.requestBody) {
+        merged.requestBody = ir.requestBody
       }
-      if (r.status != null && existing.status == null) {
-        existing.status = r.status
+      if (ir.contentType && !merged.contentType) {
+        merged.contentType = ir.contentType
       }
-      if (r.contentType && !existing.contentType) {
-        existing.contentType = r.contentType
-      }
+      result.push(merged)
+      interceptorMap.delete(key)
     } else {
-      allRequests.set(r.id, { ...r })
+      result.push(wr)
     }
   }
 
-  return Array.from(allRequests.values()).sort((a, b) => b.timestamp - a.timestamp)
+  for (const ir of interceptorData) {
+    if (interceptorMap.has(`${ir.method}:${ir.url}`)) {
+      result.push(ir)
+    }
+  }
+
+  return result.sort((a, b) => b.timestamp - a.timestamp)
 }
 
 export async function clearCapturedRequests(tabId: number): Promise<void> {
