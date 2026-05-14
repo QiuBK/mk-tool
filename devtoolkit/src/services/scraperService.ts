@@ -236,7 +236,15 @@ export async function replayRequest(
     target: { tabId: tab.id },
     world: 'MAIN',
     func: (fetchUrl: string, fetchMethod: string, fetchBody: string | null, fetchContentType: string | null, fetchHeaders: Record<string, string>) => {
-      const reqHeaders: Record<string, string> = { ...fetchHeaders }
+      const forbidden = new Set(['host', 'connection', 'content-length', 'cookie', 'origin', 'referer',
+        'sec-fetch-dest', 'sec-fetch-mode', 'sec-fetch-site', 'sec-ch-ua', 'sec-ch-ua-mobile', 'sec-ch-ua-platform',
+        'user-agent', 'accept-encoding', 'accept-language'])
+      const reqHeaders: Record<string, string> = {}
+      Object.entries(fetchHeaders).forEach(([k, v]) => {
+        if (!forbidden.has(k.toLowerCase())) {
+          reqHeaders[k] = v
+        }
+      })
       if (fetchContentType && !reqHeaders['Content-Type'] && !reqHeaders['content-type']) {
         reqHeaders['Content-Type'] = fetchContentType
       }
