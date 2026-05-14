@@ -122,7 +122,7 @@ chrome.webRequest.onBeforeRequest.addListener(
     }
 
     const entry = {
-      id: `${details.requestId}-${details.timeStamp}`,
+      id: details.requestId,
       url: details.url,
       method: details.method,
       type: 'xhr' as const,
@@ -150,7 +150,7 @@ chrome.webRequest.onCompleted.addListener(
     if (details.tabId < 0) return
     const list = capturedRequests.get(details.tabId)
     if (!list) return
-    const entry = list.find((r) => r.id === `${details.requestId}-${details.timeStamp}`)
+    const entry = list.find((r) => r.id === details.requestId)
     if (entry) {
       entry.status = details.statusCode
     }
@@ -163,7 +163,7 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
     if (details.tabId < 0) return
     const list = capturedRequests.get(details.tabId)
     if (!list) return
-    const entry = list.find((r) => r.id === `${details.requestId}-${details.timeStamp}`)
+    const entry = list.find((r) => r.id === details.requestId)
     if (entry && details.requestHeaders) {
       const skipHeaders = new Set(['host', 'connection', 'content-length', 'accept-encoding'])
       const headers: Record<string, string> = {}
@@ -179,7 +179,7 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
     }
   },
   { urls: ['<all_urls>'] },
-  ['requestHeaders']
+  ['requestHeaders', 'extraHeaders']
 )
 
 chrome.tabs.onRemoved.addListener((tabId) => {
