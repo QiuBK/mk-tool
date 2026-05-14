@@ -213,22 +213,7 @@ export async function getCapturedRequests(tabId: number): Promise<CapturedReques
     throw new Error('此功能仅在浏览器扩展中可用')
   }
 
-  let interceptorData: CapturedRequest[] = []
-  try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-    if (tab?.id && !tab.url?.startsWith('chrome://') && !tab.url?.startsWith('edge://')) {
-      const results = await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        world: 'MAIN',
-        func: () => (window as any).__devtoolkit_captured || [],
-      })
-      if (results && results[0]?.result) {
-        interceptorData = results[0].result as CapturedRequest[]
-      }
-    }
-  } catch { /* ignore */ }
-
-  const webRequestData = await new Promise<CapturedRequest[]>((resolve) => {
+  return new Promise<CapturedRequest[]>((resolve) => {
     chrome.runtime.sendMessage({ type: 'getCapturedRequests', tabId }, (response) => {
       if (chrome.runtime.lastError) {
         resolve([])
@@ -236,36 +221,6 @@ export async function getCapturedRequests(tabId: number): Promise<CapturedReques
       }
       resolve(response?.requests || [])
     })
-  })
-
-  if (interceptorData.length === 0 && webRequestData.length === 0) {
-    return []
-  }
-
-  if (interceptorData.length > 0 && webRequestData.length === 0) {
-    return interceptorData
-  }
-
-  if (interceptorData.length === 0) {
-    return webRequestData
-  }
-
-  const interceptorMap = new Map<string, CapturedRequest>()
-  for (const r of interceptorData) {
-    interceptorMap.set(`${r.method}:${r.url}`, r)
-  }
-
-  return webRequestData.map((wr) => {
-    const key = `${wr.method}:${wr.url}`
-    const ir = interceptorMap.get(key)
-    if (!ir) return wr
-    return {
-      ...wr,
-      headers: Object.keys(ir.headers || {}).length > 0 ? ir.headers : wr.headers,
-      responseHeaders: Object.keys(ir.responseHeaders || {}).length > 0 ? ir.responseHeaders : wr.responseHeaders,
-      responseBody: ir.responseBody || wr.responseBody,
-      requestBody: wr.requestBody || ir.requestBody,
-    }
   })
 }
 
