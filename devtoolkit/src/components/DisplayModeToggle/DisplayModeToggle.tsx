@@ -17,10 +17,12 @@ export function DisplayModeToggle() {
     }
 
     if (next === 'popup') {
-      setHint('正在打开浮窗...')
+      setHint('浮窗已打开')
     } else {
-      setHint('已切换为侧边栏模式')
-      setTimeout(() => window.close(), 800)
+      setHint('已切换侧边栏')
+      setTimeout(() => {
+        try { window.close() } catch { /* ignore */ }
+      }, 600)
     }
     setTimeout(() => setHint(''), 2000)
   }
@@ -29,9 +31,9 @@ export function DisplayModeToggle() {
     <button
       className={styles.toggle}
       onClick={handleToggle}
-      title={displayMode === 'sidepanel' ? '当前：侧边栏模式，点击切换为浮窗' : '当前：浮窗模式，点击切换为侧边栏'}
+      title={displayMode === 'sidepanel' ? '切换为浮窗模式' : '切换为侧边栏模式'}
     >
-      {hint ? <span className={styles.hint}>{hint}</span> : (displayMode === 'sidepanel' ? '📌' : '🪟')}
+      {hint ? <span className={styles.hint}>{hint}</span> : (displayMode === 'sidepanel' ? '🪟' : '📌')}
     </button>
   )
 }
