@@ -392,26 +392,39 @@ export async function getCapturedRequests(tabId: number): Promise<CapturedReques
     return []
   }
 
-  if (interceptorData.length > 0) {
-    const merged = new Map<string, CapturedRequest>()
-    for (const r of interceptorData) {
-      const key = `${r.method}:${r.url}`
-      merged.set(key, r)
-    }
-    for (const r of webRequestData) {
-      const key = `${r.method}:${r.url}`
-      if (!merged.has(key)) {
-        merged.set(key, r)
-      } else {
-        const existing = merged.get(key)!
-        if (!existing.requestBody && r.requestBody) existing.requestBody = r.requestBody
-        if (existing.status == null && r.status != null) existing.status = r.status
-      }
-    }
-    return Array.from(merged.values()).sort((a, b) => b.timestamp - a.timestamp)
+  const allRequests = new Map<string, CapturedRequest>()
+
+  for (const r of webRequestData) {
+    allRequests.set(r.id, { ...r })
   }
 
-  return webRequestData
+  for (const r of interceptorData) {
+    const existing = allRequests.get(r.id)
+    if (existing) {
+      if (Object.keys(r.headers || {}).length > Object.keys(existing.headers || {}).length) {
+        existing.headers = r.headers
+      }
+      if (Object.keys(r.responseHeaders || {}).length > Object.keys(existing.responseHeaders || {}).length) {
+        existing.responseHeaders = r.responseHeaders
+      }
+      if (r.responseBody && !existing.responseBody) {
+        existing.responseBody = r.responseBody
+      }
+      if (r.requestBody && !existing.requestBody) {
+        existing.requestBody = r.requestBody
+      }
+      if (r.status != null && existing.status == null) {
+        existing.status = r.status
+      }
+      if (r.contentType && !existing.contentType) {
+        existing.contentType = r.contentType
+      }
+    } else {
+      allRequests.set(r.id, { ...r })
+    }
+  }
+
+  return Array.from(allRequests.values()).sort((a, b) => b.timestamp - a.timestamp)
 }
 
 export async function clearCapturedRequests(tabId: number): Promise<void> {
