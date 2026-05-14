@@ -1,5 +1,5 @@
 import cronstrue from 'cronstrue'
-import parser from 'cron-parser'
+import { CronExpressionParser } from 'cron-parser'
 import type { ServiceResponse, CronResult, CronParseResult, CronFields, CronNextRunsResult, CronConfig } from '../types'
 
 function createSuccess<T>(data: T): ServiceResponse<T> {
@@ -63,7 +63,7 @@ export function cronNextRuns(expression: string, count: number = 5, fromTime?: n
   }
 
   try {
-    const interval = parser.parse(expression, {
+    const interval = CronExpressionParser.parse(expression, {
       currentDate: fromTime ? new Date(fromTime) : new Date(),
     })
 

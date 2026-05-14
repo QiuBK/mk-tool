@@ -30,7 +30,11 @@ export function CronTool() {
       setHumanReadable(parseResult.data.humanReadable)
       setFields(parseResult.data.fields)
       const runsResult = cronNextRuns(expr, 10)
-      if (runsResult.success) setNextRuns(runsResult.data.nextRuns)
+      if (runsResult.success) {
+        setNextRuns(runsResult.data.nextRuns)
+      } else {
+        setNextRuns([])
+      }
     } else {
       setError(parseResult.error.message)
       setHumanReadable('')
@@ -46,7 +50,11 @@ export function CronTool() {
       setHumanReadable(result.data.humanReadable)
       setError('')
       const runsResult = cronNextRuns(result.data.expression, 10)
-      if (runsResult.success) setNextRuns(runsResult.data.nextRuns)
+      if (runsResult.success) {
+        setNextRuns(runsResult.data.nextRuns)
+      } else {
+        setNextRuns([])
+      }
       saveHistoryItem({ toolType: 'cron', input: result.data.expression, output: result.data.humanReadable })
     } else {
       setError(result.error.message)
