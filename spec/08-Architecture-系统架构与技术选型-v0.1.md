@@ -109,7 +109,7 @@
 
 | Component | File | Config Detection | Timeout | Error Handling |
 |-----------|------|-----------------|---------|---------------|
-| JsonService | `src/services/jsonService.ts` | 输入大小检测 | 5s (大文本) | 返回INVALID_JSON / INPUT_TOO_LARGE |
+| JsonService | `src/services/jsonService.ts` | 输入大小检测 | 5s (大文本) | 返回INVALID_JSON / INPUT_TOO_LARGE / NOT_JSON_ARRAY / EXPORT_FAILED |
 | Base64Service | `src/services/base64Service.ts` | 输入大小检测 | 3s | 返回INVALID_BASE64 / EMPTY_INPUT |
 | TimestampService | `src/services/timestampService.ts` | 输入格式检测 | 1s | 返回INVALID_TIMESTAMP / INVALID_DATE |
 | CronService | `src/services/cronService.ts` | 表达式语法检测 | 2s | 返回INVALID_CRON_EXPRESSION |
@@ -161,6 +161,7 @@
 | ADR-001 | 使用Web Worker处理大文本 | JSON格式化等操作在主线程执行会阻塞UI渲染，Web Worker将计算移至后台线程，保证UI响应性。输入 > 100KB时自动启用。 |
 | ADR-004 | 使用CSS Custom Properties实现主题 | 相比CSS-in-JS运行时开销，Custom Properties是浏览器原生支持，零运行时成本，且支持动态切换。 |
 | ADR-005 | 使用cronstrue库解析Cron表达式 | cronstrue是成熟的Cron表达式解析库（MIT协议），支持多语言，将Cron表达式转为自然语言描述。避免自行实现复杂的Cron语法解析。 |
+| ADR-006 | 使用ExcelJS生成Excel文件 | ExcelJS是纯JavaScript的Excel读写库（MIT协议），支持.xlsx格式生成、样式设置、工作表管理。无需服务端依赖，可在浏览器端直接生成Blob下载。替代方案SheetJS（xlsx）社区版功能受限，且许可证不友好。 |
 
 ## 8. Security Architecture
 

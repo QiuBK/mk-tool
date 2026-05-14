@@ -23,6 +23,7 @@
 | 1 | `jsonFormat(input)` | JSON | JSON格式化（美化） | `JsonResult` |
 | 2 | `jsonMinify(input)` | JSON | JSON压缩（最小化） | `JsonResult` |
 | 3 | `jsonValidate(input)` | JSON | JSON语法校验 | `ValidationResult` |
+| 3.1 | `jsonExportExcel(input, options)` | JSON | JSON转Excel导出 | `Blob` |
 | 4 | `base64Encode(input)` | Base64 | Base64编码 | `EncodeResult` |
 | 5 | `base64Decode(input)` | Base64 | Base64解码 | `DecodeResult` |
 | 6 | `timestampConvert(input)` | Timestamp | 时间戳转日期 | `TimestampResult` |
@@ -73,6 +74,8 @@ interface ServiceError {
 | JSON | `INVALID_JSON` | JSON语法错误 | `{ line: number, column: number, message: string }` |
 | JSON | `EMPTY_INPUT` | 输入为空字符串 | `null` |
 | JSON | `INPUT_TOO_LARGE` | 输入超过1MB | `{ maxSize: string }` |
+| JSON | `NOT_JSON_ARRAY` | 输入JSON不是数组格式 | `{ actualType: string }` |
+| JSON | `EXPORT_FAILED` | Excel文件生成失败 | `{ message: string }` |
 | Base64 | `INVALID_BASE64` | 非法Base64字符串 | `{ position: number }` |
 | Base64 | `EMPTY_INPUT` | 输入为空字符串 | `null` |
 | Timestamp | `INVALID_TIMESTAMP` | 时间戳格式无效 | `null` |
@@ -188,6 +191,74 @@ interface ServiceError {
   "timestamp": 1747180800000
 }
 ```
+
+## 6. Base64 Encode - Base64编码
+
+## 5.1 JSON Export Excel - JSON转Excel导出
+
+**Input**:
+
+| Field | Type | Required | Constraint | Description |
+|-------|------|----------|-----------|------------|
+| input | string | **Yes** | 合法JSON数组字符串 | 待导出的JSON数组（Array of Object） |
+| options.sheetName | string | No | 默认"Sheet1"，最大31字符 | 工作表名称 |
+| options.fileName | string | No | 默认"export_{timestamp}" | 导出文件名（不含扩展名） |
+
+**Success Response** (`ServiceResult<ExcelExportResult>`):
+
+| Field | Type | Required | Description |
+|-------|------|----------|------------|
+| data.blob | Blob | Yes | 生成的.xlsx文件Blob对象 |
+| data.fileName | string | Yes | 文件名（含.xlsx扩展名） |
+| data.rowCount | number | Yes | 导出的数据行数 |
+| data.columnCount | number | Yes | 导出的列数 |
+
+**Example Input**:
+
+```json
+{
+  "input": "[{\"name\":\"张三\",\"age\":28,\"city\":\"北京\"},{\"name\":\"李四\",\"age\":32,\"city\":\"上海\"}]",
+  "options": {
+    "sheetName": "用户数据"
+  }
+}
+```
+
+**Example Output**:
+
+```json
+{
+  "success": true,
+  "data": {
+    "fileName": "export_1747180800000.xlsx",
+    "rowCount": 2,
+    "columnCount": 3
+  },
+  "timestamp": 1747180800000
+}
+```
+
+**Error Response (NOT_JSON_ARRAY)**:
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "NOT_JSON_ARRAY",
+    "message": "仅支持JSON数组格式（Array of Object）",
+    "details": { "actualType": "object" }
+  },
+  "timestamp": 1747180800000
+}
+```
+
+**Excel生成规则**:
+1. JSON数组中每个对象为一行
+2. 所有对象的键的并集作为列标题（第一行）
+3. 嵌套对象以JSON字符串形式写入单元格
+4. 数组值以逗号分隔的字符串形式写入
+5. null值写入空单元格
+6. 使用UTF-8编码，确保中文正确显示
 
 ## 6. Base64 Encode - Base64编码
 
@@ -504,9 +575,13 @@ interface ServiceError {
 | hashCompute | input | 非空字符串 | `EMPTY_INPUT` |
 | hashCompute | algorithm | 枚举值之一 | `UNSUPPORTED_ALGORITHM` |
 | historyDelete | id | 存在的记录ID | `HISTORY_NOT_FOUND` |
+| jsonExportExcel | input | 合法JSON数组 | `NOT_JSON_ARRAY` |
+| jsonExportExcel | input | 非空字符串 | `EMPTY_INPUT` |
+| jsonExportExcel | options.sheetName | 最大31字符 | `EXPORT_FAILED` |
 
 ---
 
 | Version | Date | Description |
 |---------|------|------------|
 | v0.1 | 2026-05-14 | Initial draft |
+| v0.2 | 2026-05-14 | 新增jsonExportExcel接口 (SS5.1) |

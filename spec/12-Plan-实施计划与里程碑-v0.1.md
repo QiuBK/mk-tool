@@ -32,7 +32,7 @@
 | W2 | 导航与布局 | 侧边栏导航组件，工具页面容器，响应式布局 | Aligns with `06` SS1-SS2 | S1 |
 | W3 | 主题系统 | CSS Custom Properties主题变量，深色/浅色主题，持久化 | Aligns with `06` SS2.2, `07` SS6 | S1 |
 | W4 | 状态管理 | Zustand store配置，工具状态持久化，chrome.storage集成 | Aligns with `08` SS3, `10` SS6.3 | S1 |
-| W5 | JSON工具 | JSON格式化/压缩/校验Service + UI组件 | Aligns with `09` SS3-SS5, `06` SS3 | S2 |
+| W5 | JSON工具 | JSON格式化/压缩/校验/Excel导出Service + UI组件 | Aligns with `09` SS3-SS5.1, `06` SS3 | S2 |
 | W6 | Base64工具 | Base64编解码Service + UI组件 | Aligns with `09` SS6-SS7, `06` SS6 | S2 |
 | W7 | 时间戳工具 | 时间戳转换Service + UI组件 + 实时时间戳 | Aligns with `09` SS8-SS10, `06` SS4 | S2 |
 | W8 | Cron工具 | Cron生成/解析/预览Service + UI组件 + 预设 | Aligns with `09` SS11-SS13, `06` SS5 | S2 |
@@ -75,6 +75,7 @@
 | REQ ID | User Perceives | Demo Stage | Primary WBS | Verify TC |
 |--------|---------------|-----------|------------|----------|
 | REQ-DEVTOOL-001 | JSON格式化与校验 | **S2** | W5 | TC-001 |
+| REQ-DEVTOOL-011 | JSON转Excel导出 | **S2** | W5 | TC-011 |
 | REQ-DEVTOOL-002 | Unix时间戳转换 | **S2** | W7 | TC-002 |
 | REQ-DEVTOOL-003 | Cron表达式生成器 | **S2** | W8 | TC-003 |
 | REQ-DEVTOOL-004 | Base64编解码 | **S2** | W6 | TC-004 |

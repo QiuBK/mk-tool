@@ -47,6 +47,19 @@
 | TC-001-06 | Unit | test_json_input_too_large | 返回error.code = INPUT_TOO_LARGE | REQ-DEVTOOL-001 | P0 |
 | TC-001-07 | E2E | test_json_format_copy | 格式化后点击复制，剪贴板包含格式化结果 | REQ-DEVTOOL-001 | P0 |
 
+### 3.1.1 JSON Export Excel Tests
+
+| TC-ID | Layer | Test Function | Assertion | Related REQ | Priority |
+|-------|-------|--------------|-----------|-------------|----------|
+| TC-011-01 | Unit | test_json_export_excel_success | 输入JSON数组，返回blob和fileName，rowCount/columnCount正确 | REQ-DEVTOOL-011 | P0 |
+| TC-011-02 | Unit | test_json_export_excel_headers | Excel列标题为所有对象键的并集 | REQ-DEVTOOL-011 | P0 |
+| TC-011-03 | Unit | test_json_export_excel_chinese | 中文内容在导出文件中正确显示 | REQ-DEVTOOL-011 | P0 |
+| TC-011-04 | Unit | test_json_export_excel_nested | 嵌套对象以JSON字符串形式写入单元格 | REQ-DEVTOOL-011 | P0 |
+| TC-011-05 | Unit | test_json_export_not_array | 输入非数组JSON返回error.code = NOT_JSON_ARRAY | REQ-DEVTOOL-011 | P0 |
+| TC-011-06 | Unit | test_json_export_empty_input | 空输入返回error.code = EMPTY_INPUT | REQ-DEVTOOL-011 | P0 |
+| TC-011-07 | Unit | test_json_export_custom_sheet_name | 自定义sheetName正确写入Excel | REQ-DEVTOOL-011 | P0 |
+| TC-011-08 | E2E | test_json_export_download | 点击导出按钮，浏览器触发文件下载 | REQ-DEVTOOL-011 | P0 |
+
 ### 3.2 Timestamp Tool Tests
 
 | TC-ID | Layer | Test Function | Assertion | Related REQ | Priority |
@@ -190,6 +203,7 @@ npm audit              # Security audit
 | REQ ID | Implemented TC | To-be-added TC |
 |--------|---------------|----------------|
 | REQ-DEVTOOL-001 | TC-001-01~07 | -- |
+| REQ-DEVTOOL-011 | TC-011-01~08 | -- |
 | REQ-DEVTOOL-002 | TC-002-01~07 | -- |
 | REQ-DEVTOOL-003 | TC-003-01~07 | -- |
 | REQ-DEVTOOL-004 | TC-004-01~05 | -- |

@@ -41,6 +41,7 @@
 | **REQ-DEVTOOL-008** | 颜色格式转换 | P1 | `05` US-008 | HEX/RGB/HSL互转，颜色选择器 |
 | **REQ-DEVTOOL-009** | 哈希计算 | P1 | `05` US-009 | MD5/SHA-1/SHA-256计算 |
 | **REQ-DEVTOOL-010** | 深色/浅色主题 | P1 | `05` US-010 | 主题切换，跟随系统，持久化 |
+| **REQ-DEVTOOL-011** | JSON转Excel导出 | P0 | `05` US-011 | JSON数组转Excel文件下载，自定义Sheet名，中文支持 |
 
 ## 3. Forward Traceability Matrix
 
@@ -58,6 +59,7 @@
 | **REQ-DEVTOOL-008** | US-008 / AC-008-01~05 | `colorConvert` | TC-008-01~04 | ✅ Covered |
 | **REQ-DEVTOOL-009** | US-009 / AC-009-01~05 | `hashCompute` | TC-009-01~05 | ✅ Covered |
 | **REQ-DEVTOOL-010** | US-010 / AC-010-01~03 | N/A (纯前端) | TC-010-01~03 | ✅ Covered |
+| **REQ-DEVTOOL-011** | US-011 / AC-011-01~07 | `jsonExportExcel` | TC-011-01~08 | ✅ Covered |
 
 ## 4. Reverse Traceability Matrix
 
@@ -117,6 +119,14 @@
 | TC-010-01 | Integration | REQ-DEVTOOL-010 | 主题切换 |
 | TC-010-02 | Integration | REQ-DEVTOOL-010 | 主题持久化 |
 | TC-010-03 | Integration | REQ-DEVTOOL-010 | 跟随系统主题 |
+| TC-011-01 | Unit | REQ-DEVTOOL-011 | JSON数组导出Excel成功 |
+| TC-011-02 | Unit | REQ-DEVTOOL-011 | Excel列标题为键并集 |
+| TC-011-03 | Unit | REQ-DEVTOOL-011 | 中文内容正确显示 |
+| TC-011-04 | Unit | REQ-DEVTOOL-011 | 嵌套对象以JSON字符串展示 |
+| TC-011-05 | Unit | REQ-DEVTOOL-011 | 非数组JSON返回NOT_JSON_ARRAY |
+| TC-011-06 | Unit | REQ-DEVTOOL-011 | 空输入返回EMPTY_INPUT |
+| TC-011-07 | Unit | REQ-DEVTOOL-011 | 自定义SheetName正确写入 |
+| TC-011-08 | E2E | REQ-DEVTOOL-011 | 点击导出触发文件下载 |
 
 ## 5. API Endpoint -> Test Case Mapping
 
@@ -125,6 +135,7 @@
 | 1 | `jsonFormat` | JSON | TC-001-01 | ✅ |
 | 2 | `jsonMinify` | JSON | TC-001-02 | ✅ |
 | 3 | `jsonValidate` | JSON | TC-001-03, TC-001-04 | ✅ |
+| 3.1 | `jsonExportExcel` | JSON | TC-011-01~08 | ✅ |
 | 4 | `base64Encode` | Base64 | TC-004-01, TC-004-03 | ✅ |
 | 5 | `base64Decode` | Base64 | TC-004-02, TC-004-04 | ✅ |
 | 6 | `timestampConvert` | Timestamp | TC-002-01, TC-002-02, TC-002-05 | ✅ |
@@ -146,12 +157,12 @@
 
 | Dimension | Covered | Total | Coverage % |
 |-----------|---------|-------|-----------|
-| API Endpoints | 19 | 19 | 100% |
-| REQ Items (P0) | 5 | 5 | 100% |
+| API Endpoints | 20 | 20 | 100% |
+| REQ Items (P0) | 6 | 6 | 100% |
 | REQ Items (P1) | 5 | 5 | 100% |
-| REQ Items (All) | 10 | 10 | 100% |
-| TC Count | 53 | 53 | 100% |
-| Error Codes | 12 | 12 | 100% |
+| REQ Items (All) | 11 | 11 | 100% |
+| TC Count | 61 | 61 | 100% |
+| Error Codes | 14 | 14 | 100% |
 
 ### Key Risks
 

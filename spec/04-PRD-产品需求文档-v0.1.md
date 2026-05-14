@@ -45,6 +45,7 @@
 | SC-07 | URL编解码 | 打开侧边栏 -> 选择URL工具 -> 输入URL文本 -> 点击编码/解码 -> 查看结果 -> 复制 |
 | SC-08 | 颜色格式转换 | 打开侧边栏 -> 选择颜色工具 -> 输入HEX/RGB/HSL值 -> 查看其他格式 -> 复制目标格式 |
 | SC-09 | 哈希计算 | 打开侧边栏 -> 选择哈希工具 -> 输入文本 -> 选择算法 -> 查看哈希值 -> 复制 |
+| SC-10 | JSON转Excel导出 | 打开侧边栏 -> 选择JSON工具 -> 粘贴JSON数组 -> 点击"导出Excel" -> 选择工作表名 -> 下载.xlsx文件 |
 
 ## 4. Product Rules
 
@@ -60,6 +61,9 @@
 | R-08 | 输入超过大小限制时MUST显示警告提示 | 03 SS5 性能风险 |
 | R-09 | 插件MUST支持深色/浅色主题切换 | S-02 用户体验问题 |
 | R-10 | 侧边栏MUST支持键盘快捷键操作 | S-03 用户访谈 |
+| R-11 | JSON转Excel导出MUST在本地生成文件，MUST NOT将数据上传到任何服务器 | S-04 数据隐私 |
+| R-12 | JSON转Excel仅支持JSON数组格式（Array of Object），非数组格式MUST提示用户 | S-04 需求约束 |
+| R-13 | 导出的Excel文件MUST使用UTF-8编码，正确显示中文 | S-04 中文支持 |
 
 ## 5. Capabilities & Priorities
 
@@ -68,6 +72,7 @@
 | JSON格式化（美化） | **P0** | SC-01 |
 | JSON压缩（最小化） | **P0** | SC-01 |
 | JSON语法校验与错误定位 | **P0** | SC-01 |
+| JSON转Excel导出 | **P0** | SC-10 |
 | Base64文本编码 | **P0** | SC-04 |
 | Base64文本解码 | **P0** | SC-04 |
 | Unix时间戳转日期 | **P0** | SC-02 |
@@ -77,13 +82,13 @@
 | Cron表达式解析为自然语言 | **P0** | SC-03 |
 | Cron下次执行时间预览 | **P0** | SC-03 |
 | 侧边栏工具导航 | **P0** | SC-05 |
-| 一键复制结果 | **P0** | SC-01~SC-09 |
+| 一键复制结果 | **P0** | SC-01~SC-10 |
 | URL编码 | P1 | SC-07 |
 | URL解码 | P1 | SC-07 |
 | 颜色格式转换（HEX/RGB/HSL） | P1 | SC-08 |
 | 哈希计算（MD5/SHA-1/SHA-256） | P1 | SC-09 |
 | 本地历史记录 | P1 | SC-06 |
-| 深色/浅色主题 | P1 | SC-01~SC-09 |
+| 深色/浅色主题 | P1 | SC-01~SC-10 |
 | 键盘快捷键 | P1 | SC-05 |
 
 ## 6. Acceptance & Success Criteria (PRD Level)
@@ -99,7 +104,7 @@
 
 | This Doc (PRD) | Role | Lands in 05 |
 |----------------|------|------------|
-| SS3 Core Scenarios | One narrative -> one or more US | SC-01 -> US-001, SC-02 -> US-002, SC-03 -> US-003, SC-04 -> US-004, SC-05 -> US-005, SC-06 -> US-006 |
+| SS3 Core Scenarios | One narrative -> one or more US | SC-01 -> US-001, SC-02 -> US-002, SC-03 -> US-003, SC-04 -> US-004, SC-05 -> US-005, SC-06 -> US-006, SC-10 -> US-011 |
 | SS4 Product Rules | Field/state/error specs | Split into each US's AC |
 | SS5 Capability Priority | P0 / P1 | Aligned with US priority |
 
@@ -108,3 +113,4 @@
 | Version | Date | Description |
 |---------|------|------------|
 | v0.1 | 2026-05-14 | Initial draft |
+| v0.2 | 2026-05-14 | 新增JSON转Excel导出功能 (SC-10, R-11~R-13) |

@@ -30,6 +30,8 @@
 | 侧边栏打开 | < 500ms | 点击图标到面板可交互 | 03 SS4 |
 | 历史记录加载 | < 100ms | 打开面板到列表渲染完成 | 04 SC-06 |
 | 哈希计算（1KB输入） | < 50ms | 输入提交到结果渲染 | 03 SS4 |
+| JSON转Excel导出（100条记录） | < 500ms | 点击导出到文件下载触发 | 04 SC-10 |
+| JSON转Excel导出（10000条记录） | < 3s | 点击导出到文件下载触发 | 04 SC-10 |
 
 ### 1.2 Degradation Strategy
 
@@ -82,6 +84,8 @@
 | `INVALID_DATE` | 日期格式无效 |
 | `INVALID_CRON_EXPRESSION` | Cron表达式语法错误 |
 | `UNSUPPORTED_CRON_SYNTAX` | 不支持的Cron语法 |
+| `NOT_JSON_ARRAY` | JSON不是数组格式 |
+| `EXPORT_FAILED` | Excel导出失败 |
 | `INVALID_COLOR_FORMAT` | 颜色格式无效 |
 | `UNSUPPORTED_ALGORITHM` | 不支持的哈希算法 |
 | `HISTORY_NOT_FOUND` | 历史记录不存在 |
@@ -111,6 +115,8 @@
 | Constraint | Specification | Source |
 |-----------|--------------|--------|
 | JSON输入最大长度 | 1MB (1,048,576 bytes) | `04` R-08 |
+| JSON导出Excel最大行数 | 50000行 | `09` SS5.1 |
+| JSON导出Excel最大列数 | 100列 | `09` SS5.1 |
 | Base64输入最大长度 | 1MB (1,048,576 bytes) | `04` R-08 |
 | 时间戳有效范围 | -2,147,483,648 ~ 2,147,483,647 (32位) | `09` SS8 |
 | Cron表达式最大长度 | 256字符 | `09` SS12 |

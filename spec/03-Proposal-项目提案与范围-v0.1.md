@@ -25,13 +25,14 @@
 
 ## 2. Proposal Summary
 
-> Deliver an integrated developer toolkit Edge browser extension within a sidebar panel for software developers, providing JSON formatting, Base64 encoding/decoding, Unix timestamp conversion, Cron expression generation, URL encoding/decoding, color format conversion, and hash calculation — all processed locally with zero data transmission, supporting instant tool switching, one-click copy, and local history.
+> Deliver an integrated developer toolkit Edge browser extension within a sidebar panel for software developers, providing JSON formatting, JSON-to-Excel export, Base64 encoding/decoding, Unix timestamp conversion, Cron expression generation, URL encoding/decoding, color format conversion, and hash calculation — all processed locally with zero data transmission, supporting instant tool switching, one-click copy, and local history.
 
 ## 3. Scope Boundary
 
 | In-Scope | Out-of-Scope |
 |----------|--------------|
 | JSON格式化/压缩/校验 | JSON Schema验证 |
+| JSON转Excel导出 | Excel模板自定义 |
 | Base64文本编解码 | Base64文件编解码（P2阶段） |
 | Unix时间戳与日期互转（多时区） | NTP时间同步 |
 | Cron表达式可视化生成与解析 | Cron表达式远程任务调度 |
@@ -76,3 +77,4 @@
 | Version | Date | Description |
 |---------|------|------------|
 | v0.1 | 2026-05-14 | Initial draft |
+| v0.2 | 2026-05-14 | 新增JSON转Excel导出范围 |

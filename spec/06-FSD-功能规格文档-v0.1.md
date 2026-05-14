@@ -61,6 +61,7 @@
 | 格式化 | 点击"格式化"按钮 | `jsonFormat(input)` | 输出区域显示美化JSON，显示键数和嵌套深度统计 |
 | 压缩 | 点击"压缩"按钮 | `jsonMinify(input)` | 输出区域显示最小化JSON，显示压缩率 |
 | 校验 | 输入时实时 / 点击"校验"按钮 | `jsonValidate(input)` | 合法时显示绿色勾号；非法时高亮错误行，显示错误信息 |
+| 导出Excel | 点击"导出Excel"按钮 | `jsonExportExcel(input, options)` | 生成.xlsx文件并触发浏览器下载 |
 | 复制 | 点击输出区域"复制"按钮 | `navigator.clipboard.writeText()` | 按钮文字变为"已复制 ✓"，2秒后恢复 |
 
 ### 3.1 Input Area
@@ -78,6 +79,22 @@
 | **B Processing** | 正在格式化/压缩 | 显示加载动画（大文本时） |
 | **C Success** | 处理成功 | 显示格式化/压缩结果 + 统计信息 + 复制按钮 |
 | **D Error** | JSON校验失败 | 高亮错误行号 + 错误消息 + 错误位置标记 |
+
+### 3.3 Excel Export Options
+
+| Element | Type | Behavior |
+|---------|------|----------|
+| 工作表名称输入框 | `<input type="text">` | 默认"Sheet1"，用户可自定义 |
+| 导出Excel按钮 | `<button>` | 仅当输入为合法JSON数组时可点击，否则置灰 |
+
+### 3.4 Excel Export States
+
+| State | Condition | Display Content |
+|-------|-----------|----------------|
+| **A Disabled** | 输入为空或非JSON数组 | "导出Excel"按钮置灰，提示"请输入JSON数组" |
+| **B Processing** | 正在生成Excel | 按钮显示加载动画 |
+| **C Success** | 文件生成完成 | 触发浏览器下载，按钮短暂显示"已导出 ✓" |
+| **D Error** | 输入非JSON数组 | 显示错误提示"仅支持JSON数组格式（Array of Object）" |
 
 ## 4. Timestamp Tool - 时间戳工具交互
 
@@ -190,6 +207,8 @@
 | `INVALID_COLOR_FORMAT` | 输入框下方红色提示："无效的颜色格式" |
 | `UNSUPPORTED_ALGORITHM` | 算法选择区域红色提示："不支持的哈希算法" |
 | `STORAGE_QUOTA_EXCEEDED` | 全局Toast警告："本地存储空间不足，请清理历史记录" |
+| `NOT_JSON_ARRAY` | JSON工具区域红色提示："仅支持JSON数组格式（Array of Object）" |
+| `EXPORT_FAILED` | JSON工具区域红色提示："Excel导出失败：{message}" |
 
 ## 12. State Management
 
@@ -215,9 +234,11 @@
 | US-008 | AC-008-01~05 | SS8 |
 | US-009 | AC-009-01~05 | SS9 |
 | US-010 | AC-010-01~03 | SS2.2, SS12 |
+| US-011 | AC-011-01~07 | SS3, SS3.3, SS3.4 |
 
 ---
 
 | Version | Date | Description |
 |---------|------|------------|
 | v0.1 | 2026-05-14 | Initial draft |
+| v0.2 | 2026-05-14 | 新增JSON转Excel导出交互规格 (SS3.3, SS3.4) |

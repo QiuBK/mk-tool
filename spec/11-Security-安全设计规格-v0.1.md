@@ -63,6 +63,7 @@
 | Protection | Implementation | Description |
 |-----------|---------------|------------|
 | Input Validation | Service层统一校验 | 每个Service函数入口验证输入类型、长度、格式 |
+| File Download Safety | Blob URL + `<a download>` + 立即释放 | Excel导出使用Blob URL触发下载，下载完成后立即释放URL，防止被其他页面访问 |
 | SQL Injection | 不适用 | 无SQL数据库 |
 | XSS | React默认转义 + CSP | React自动转义HTML，manifest.json配置严格CSP禁止inline script |
 | CSRF | 不适用 | 无网络请求 |
@@ -100,6 +101,7 @@
 | T (Tampering) | 恶意页面注入脚本到Side Panel | 中 | 严格CSP策略 + React自动转义 | Engineering |
 | R (Repudiation) | 用户否认操作历史 | 低 | 历史记录仅用于便利，不作为审计依据 | Product |
 | I (Information Disclosure) | 用户输入数据泄露到网络 | **高** | 零网络传输设计 + manifest.json不申请网络权限 | Engineering |
+| I (Information Disclosure) | Excel导出文件被恶意网站截获 | 低 | 使用Blob URL + `<a download>` 触发下载，URL在下载后立即释放 | Engineering |
 | D (Denial of Service) | 大输入导致扩展卡死 | 中 | 输入大小限制 + Web Worker异步处理 | Engineering |
 | E (Elevation of Privilege) | 扩展获取超出需要的权限 | 中 | 最小权限原则，仅申请必要权限 | Engineering |
 

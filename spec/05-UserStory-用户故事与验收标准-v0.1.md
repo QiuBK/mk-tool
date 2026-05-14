@@ -224,6 +224,29 @@
 | AC-010-02 | 默认跟随系统主题设置 |
 | AC-010-03 | 主题设置持久化，重启插件后保持 |
 
+## US-011 (P0) JSON转Excel导出
+
+| Field | Content |
+|-------|---------|
+| **REQ ID** | REQ-DEVTOOL-011 |
+| **Story** | As 开发者, I want 将JSON数组数据导出为Excel文件, so that 我能方便地对API返回数据进行分析和分享 |
+| **Priority** | P0 |
+| **Source** | <- 04 SC-10 / 04 R-11~R-13 |
+| **Precondition** | 插件已安装，侧边栏已打开，JSON工具已选中 |
+| **Func Alignment** | -> 06 SS3 / 07 SS1 |
+| **Design Alignment** | -> 08 SS3 / 09 / 10 / 11 SS3 |
+| **Verify Alignment** | -> 13 TC-011 / 14 row 11 |
+
+| AC ID | Description (each independently testable) |
+|-------|------------------------------------------|
+| AC-011-01 | 输入JSON数组（Array of Object），点击"导出Excel"，生成并下载.xlsx文件 |
+| AC-011-02 | 导出的Excel文件以JSON对象的键作为列标题，每条对象为一行 |
+| AC-011-03 | 输入非JSON数组格式（如单个对象、非JSON文本）时，显示错误提示"仅支持JSON数组格式" |
+| AC-011-04 | 支持自定义工作表名称（Sheet Name），默认为"Sheet1" |
+| AC-011-05 | 导出的Excel文件正确显示中文内容（UTF-8编码） |
+| AC-011-06 | 嵌套JSON对象在Excel中以JSON字符串形式展示 |
+| AC-011-07 | 导出过程在本地完成，不发送任何数据到远程服务器 |
+
 ## Requirements Traceability Index
 
 | REQ ID | UserStory | Priority | ->06 FSD | ->09 API | ->11 Security | ->13 TC | ->14 Trace |
@@ -238,9 +261,11 @@
 | REQ-DEVTOOL-008 | 颜色格式转换 | P1 | SS2 | /color/convert | SS3 | TC-008 | row 8 |
 | REQ-DEVTOOL-009 | 哈希计算 | P1 | SS2 | /hash/compute | SS3 | TC-009 | row 9 |
 | REQ-DEVTOOL-010 | 深色/浅色主题 | P1 | SS1 | N/A (纯前端) | N/A | TC-010 | row 10 |
+| REQ-DEVTOOL-011 | JSON转Excel导出 | **P0** | SS3 | /json/exportExcel | SS3 | TC-011 | row 11 |
 
 ---
 
 | Version | Date | Description |
 |---------|------|------------|
 | v0.1 | 2026-05-14 | Initial draft |
+| v0.2 | 2026-05-14 | 新增US-011 JSON转Excel导出 |
