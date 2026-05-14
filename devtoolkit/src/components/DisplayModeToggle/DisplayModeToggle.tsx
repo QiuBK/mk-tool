@@ -22,7 +22,7 @@ export function DisplayModeToggle() {
       setHint('已切换侧边栏')
       setTimeout(() => {
         try { window.close() } catch { /* ignore */ }
-      }, 600)
+      }, 500)
     }
     setTimeout(() => setHint(''), 2000)
   }

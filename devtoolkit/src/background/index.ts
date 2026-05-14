@@ -1,7 +1,6 @@
-let currentMode = 'sidepanel'
+let popupWindowId: number | null = null
 
 function applyMode(mode: string) {
-  currentMode = mode
   if (mode === 'sidepanel') {
     chrome.action.setPopup({ popup: '' })
     chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
@@ -17,16 +16,21 @@ chrome.storage.local.get('devtoolkit-display-mode', (result) => {
 })
 
 chrome.action.onClicked.addListener((tab) => {
-  if (currentMode === 'popup') {
-    chrome.windows.create({
-      url: chrome.runtime.getURL('src/popup/index.html'),
-      type: 'popup',
-      width: 500,
-      height: 640,
-    })
-  } else if (tab.id != null) {
-    chrome.sidePanel.open({ tabId: tab.id })
-  }
+  chrome.storage.local.get('devtoolkit-display-mode', (result) => {
+    const mode = (result['devtoolkit-display-mode'] as string) || 'sidepanel'
+    if (mode === 'popup') {
+      chrome.windows.create({
+        url: chrome.runtime.getURL('src/popup/index.html'),
+        type: 'popup',
+        width: 500,
+        height: 640,
+      }, (win) => {
+        if (win?.id) popupWindowId = win.id
+      })
+    } else if (tab.id != null) {
+      chrome.sidePanel.open({ tabId: tab.id })
+    }
+  })
 })
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -36,13 +40,23 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     chrome.storage.local.set({ 'devtoolkit-display-mode': mode })
 
     if (mode === 'popup') {
+      if (popupWindowId != null) {
+        chrome.windows.remove(popupWindowId)
+        popupWindowId = null
+      }
       chrome.windows.create({
         url: chrome.runtime.getURL('src/popup/index.html'),
         type: 'popup',
         width: 500,
         height: 640,
+      }, (win) => {
+        if (win?.id) popupWindowId = win.id
       })
     } else {
+      if (popupWindowId != null) {
+        chrome.windows.remove(popupWindowId)
+        popupWindowId = null
+      }
       chrome.windows.getLastFocused({ windowTypes: ['normal'] }, (win) => {
         if (win.id) {
           chrome.tabs.query({ active: true, windowId: win.id }, (tabs) => {
@@ -56,4 +70,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     sendResponse({ ok: true })
   }
   return true
+})
+
+chrome.windows.onRemoved.addListener((windowId) => {
+  if (windowId === popupWindowId) {
+    popupWindowId = null
+  }
 })

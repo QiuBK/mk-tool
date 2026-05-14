@@ -60,3 +60,57 @@
   color: var(--color-text-secondary);
   font-size: 14px;
 }
+
+.switchedOverlay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: var(--color-bg);
+}
+
+.switchedCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 32px 24px;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md, 8px);
+  max-width: 260px;
+  text-align: center;
+}
+
+.switchedIcon {
+  font-size: 36px;
+  line-height: 1;
+}
+
+.switchedTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.switchedDesc {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+.switchedBtn {
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm, 4px);
+  padding: 6px 16px;
+  font-size: 13px;
+  cursor: pointer;
+  margin-top: 4px;
+}
+
+.switchedBtn:hover {
+  opacity: 0.9;
+}

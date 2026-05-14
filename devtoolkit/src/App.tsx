@@ -25,8 +25,10 @@ const TOOL_COMPONENTS: Record<string, React.LazyExoticComponent<React.FC>> = {
   hash: HashTool,
 }
 
+const isSidepanel = typeof window !== 'undefined' && window.location.pathname.includes('sidepanel')
+
 export default function App() {
-  const { activeTool, setActiveTool, historyOpen, setHistoryOpen } = useAppStore()
+  const { activeTool, setActiveTool, historyOpen, setHistoryOpen, displayMode } = useAppStore()
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -45,6 +47,22 @@ export default function App() {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleKeyDown])
+
+  if (isSidepanel && displayMode === 'popup') {
+    return (
+      <div className={styles.switchedOverlay}>
+        <div className={styles.switchedCard}>
+          <div className={styles.switchedIcon}>🪟</div>
+          <p className={styles.switchedTitle}>已切换为浮窗模式</p>
+          <p className={styles.switchedDesc}>浮窗已打开，可关闭此侧边栏</p>
+          <button className={styles.switchedBtn} onClick={() => {
+            const btn = document.querySelector('[aria-label="Close"]') as HTMLElement
+            if (btn) btn.click()
+          }}>关闭侧边栏</button>
+        </div>
+      </div>
+    )
+  }
 
   const ActiveComponent = TOOL_COMPONENTS[activeTool] || JsonTool
 
