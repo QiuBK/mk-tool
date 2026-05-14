@@ -18,27 +18,11 @@ function scrapePageFn() {
         for (let i = 0; i < allRows.length; i++) {
           if (allRows[i] === theadRow) { headerRowIndex = i; break }
         }
-      } else {
+      } else if (allRows.length >= 2) {
         const firstRow = allRows[0]
         const cells = firstRow.querySelectorAll('th, td')
-        if (cells.length > 0) {
-          const hasTh = firstRow.querySelector('th') != null
-          if (hasTh) {
-            headers = Array.from(cells).map((cell) => cell.textContent?.trim() || '')
-            headerRowIndex = 0
-          } else {
-            const firstRowTexts = Array.from(cells).map((cell) => cell.textContent?.trim() || '')
-            const hasBold = Array.from(cells).some((cell) => {
-              const style = window.getComputedStyle(cell)
-              return parseInt(style.fontWeight) >= 700 || style.fontWeight === 'bold'
-            })
-            const hasStrong = Array.from(cells).some((cell) => cell.querySelector('strong, b, [style*="font-weight"]'))
-            if (hasBold || hasStrong) {
-              headers = firstRowTexts
-              headerRowIndex = 0
-            }
-          }
-        }
+        headers = Array.from(cells).map((cell) => cell.textContent?.trim() || '')
+        headerRowIndex = 0
       }
 
       const rows: string[][] = []
