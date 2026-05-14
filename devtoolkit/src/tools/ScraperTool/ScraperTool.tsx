@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { scrapeCurrentPage, tableToText, listToText, tableToCsv, exportTableToExcel, getCapturedRequests, clearCapturedRequests, requestToText, requestsToCsv, replayRequest, injectInterceptor } from '../../services/scraperService'
+import { scrapeCurrentPage, tableToText, listToText, tableToCsv, exportTableToExcel, getCapturedRequests, clearCapturedRequests, requestToText, requestsToCsv, replayRequest, injectInterceptor, readPageAuth } from '../../services/scraperService'
 import { CopyButton } from '../../components/CopyButton/CopyButton'
 import type { ScrapeResult, ScrapedTable, ScrapedList, CapturedRequest, ReplayResponse } from '../../types'
 import styles from './ScraperTool.module.css'
@@ -83,12 +83,21 @@ export function ScraperTool() {
     setEditParams(getUrlParams(req.url))
   }
 
-  const handleStartEdit = () => {
+  const handleStartEdit = async () => {
     if (!selectedReq) return
     setEditMode(true)
     setReplayResp(null)
     setReplayError('')
-    setEditHeaders(selectedReq.headers || {})
+    const mergedHeaders = { ...(selectedReq.headers || {}) }
+    if (!mergedHeaders['Authorization'] && !mergedHeaders['authorization']) {
+      try {
+        const pageAuth = await readPageAuth()
+        if (pageAuth['Authorization']) {
+          mergedHeaders['Authorization'] = pageAuth['Authorization']
+        }
+      } catch { /* ignore */ }
+    }
+    setEditHeaders(mergedHeaders)
     setEditParams(getUrlParams(selectedReq.url))
   }
 
@@ -456,13 +465,22 @@ export function ScraperTool() {
                                   {replayResp.status} {replayResp.statusText}
                                 </code>
                               </div>
+                              {replayResp.requestHeaders && Object.keys(replayResp.requestHeaders).length > 0 && (
+                                <div className={styles.apiDetailRow} style={{ flexDirection: 'column', gap: 2 }}>
+                                  <span className={styles.apiDetailLabel}>实际请求头</span>
+                                  <pre className={styles.apiDetailPre} style={{ maxHeight: 150 }}>{JSON.stringify(replayResp.requestHeaders, null, 2)}</pre>
+                                </div>
+                              )}
                               {Object.keys(replayResp.headers).length > 0 && (
                                 <div className={styles.apiDetailRow} style={{ flexDirection: 'column', gap: 2 }}>
                                   <span className={styles.apiDetailLabel}>响应头</span>
-                                  <pre className={styles.apiDetailPre} style={{ maxHeight: 100 }}>{JSON.stringify(replayResp.headers, null, 2)}</pre>
+                                  <pre className={styles.apiDetailPre} style={{ maxHeight: 150 }}>{JSON.stringify(replayResp.headers, null, 2)}</pre>
                                 </div>
                               )}
-                              <pre className={styles.apiDetailPre}>{tryFormatJson(replayResp.body)}</pre>
+                              <div className={styles.apiDetailRow} style={{ flexDirection: 'column', gap: 2 }}>
+                                <span className={styles.apiDetailLabel}>响应体</span>
+                                <pre className={styles.apiDetailPre}>{tryFormatJson(replayResp.body)}</pre>
+                              </div>
                             </div>
                           )}
                         </div>

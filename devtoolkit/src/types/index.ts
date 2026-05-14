@@ -149,6 +149,7 @@ export interface ReplayResponse {
   statusText: string
   headers: Record<string, string>
   body: string
+  requestHeaders: Record<string, string>
 }
 
 export interface HistoryItem {

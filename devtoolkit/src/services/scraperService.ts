@@ -287,6 +287,48 @@ export async function injectInterceptor(): Promise<void> {
   } catch { /* ignore */ }
 }
 
+export async function readPageAuth(): Promise<Record<string, string>> {
+  if (typeof chrome === 'undefined' || !chrome.tabs || !chrome.scripting) return {}
+
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+  if (!tab?.id) return {}
+  if (tab.url?.startsWith('chrome://') || tab.url?.startsWith('edge://') || tab.url?.startsWith('about:')) return {}
+
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      world: 'MAIN',
+      func: () => {
+        const headers: Record<string, string> = {}
+        const tokenKeys = ['token', 'access_token', 'accessToken', 'Authorization', 'authorization', 'auth_token', 'jwt', 'id_token', 'authToken']
+        for (const key of tokenKeys) {
+          try {
+            const val = localStorage.getItem(key)
+            if (val) { headers['Authorization'] = val; break }
+          } catch { /* ignore */ }
+        }
+        if (!headers['Authorization']) {
+          try {
+            for (let i = 0; i < localStorage.length; i++) {
+              const k = localStorage.key(i)
+              if (k) {
+                const v = localStorage.getItem(k)
+                if (v && typeof v === 'string' && v.startsWith('eyJ')) {
+                  headers['Authorization'] = v
+                  break
+                }
+              }
+            }
+          } catch { /* ignore */ }
+        }
+        return headers
+      },
+    })
+    return (results?.[0]?.result as Record<string, string>) || {}
+  } catch { /* ignore */ }
+  return {}
+}
+
 export async function getCapturedRequests(tabId: number): Promise<CapturedRequest[]> {
   if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) {
     throw new Error('此功能仅在浏览器扩展中可用')
@@ -425,6 +467,29 @@ export async function replayRequest(
       if (fetchContentType && !reqHeaders['Content-Type'] && !reqHeaders['content-type']) {
         reqHeaders['Content-Type'] = fetchContentType
       }
+      if (!reqHeaders['Authorization'] && !reqHeaders['authorization']) {
+        const tokenKeys = ['token', 'access_token', 'accessToken', 'Authorization', 'authorization', 'auth_token', 'jwt', 'id_token', 'authToken']
+        for (const key of tokenKeys) {
+          try {
+            const val = localStorage.getItem(key)
+            if (val) { reqHeaders['Authorization'] = val; break }
+          } catch { /* ignore */ }
+        }
+        if (!reqHeaders['Authorization'] && !reqHeaders['authorization']) {
+          try {
+            for (let i = 0; i < localStorage.length; i++) {
+              const k = localStorage.key(i)
+              if (k) {
+                const v = localStorage.getItem(k)
+                if (v && typeof v === 'string' && v.startsWith('eyJ')) {
+                  reqHeaders['Authorization'] = v
+                  break
+                }
+              }
+            }
+          } catch { /* ignore */ }
+        }
+      }
       return fetch(fetchUrl, {
         method: fetchMethod,
         headers: reqHeaders,
@@ -434,9 +499,9 @@ export async function replayRequest(
         const respHeaders: Record<string, string> = {}
         res.headers.forEach((v, k) => { respHeaders[k] = v })
         const respBody = await res.text()
-        return { status: res.status, statusText: res.statusText, headers: respHeaders, body: respBody }
-      }).catch((err) => {
-        return { status: 0, statusText: err.message || 'Network Error', headers: {}, body: '' }
+        return { status: res.status, statusText: res.statusText, headers: respHeaders, body: respBody, requestHeaders: reqHeaders }
+      }).catch((err: any) => {
+        return { status: 0, statusText: err.message || 'Network Error', headers: {}, body: '', requestHeaders: reqHeaders }
       })
     },
     args: [url, method, body, contentType, headers],
