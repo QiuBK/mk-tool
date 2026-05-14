@@ -143,6 +143,13 @@ export interface CapturedRequest {
   tabId: number
 }
 
+export interface ReplayResponse {
+  status: number
+  statusText: string
+  headers: Record<string, string>
+  body: string
+}
+
 export interface HistoryItem {
   id: string
   toolType: ToolType

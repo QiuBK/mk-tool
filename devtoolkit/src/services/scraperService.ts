@@ -1,4 +1,4 @@
-import type { ScrapeResult, ScrapedTable, ScrapedList, CapturedRequest } from '../types'
+import type { ScrapeResult, ScrapedTable, ScrapedList, CapturedRequest, ReplayResponse } from '../types'
 
 function scrapePageFn() {
   function extractTables(): { headers: string[]; rows: string[][]; caption: string; source: 'table' }[] {
@@ -207,4 +207,44 @@ export function requestsToCsv(requests: CapturedRequest[]): string {
     return cell
   }).join(','))
   return [headers.join(','), ...rows].join('\n')
+}
+
+export async function replayRequest(
+  url: string,
+  method: string,
+  body: string | null,
+  contentType: string | null,
+): Promise<ReplayResponse> {
+  if (typeof chrome === 'undefined' || !chrome.tabs || !chrome.scripting) {
+    throw new Error('此功能仅在浏览器扩展中可用')
+  }
+
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+  if (!tab?.id) {
+    throw new Error('无法获取当前标签页')
+  }
+
+  const results = await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    func: (fetchUrl: string, fetchMethod: string, fetchBody: string | null, fetchContentType: string | null) => {
+      return fetch(fetchUrl, {
+        method: fetchMethod,
+        headers: fetchContentType ? { 'Content-Type': fetchContentType } : undefined,
+        body: fetchBody || undefined,
+        credentials: 'include',
+      }).then(async (res) => {
+        const headers: Record<string, string> = {}
+        res.headers.forEach((v, k) => { headers[k] = v })
+        const body = await res.text()
+        return { status: res.status, statusText: res.statusText, headers, body }
+      })
+    },
+    args: [url, method, body, contentType],
+  })
+
+  if (!results || results.length === 0 || !results[0].result) {
+    throw new Error('请求发送失败')
+  }
+
+  return results[0].result as ReplayResponse
 }

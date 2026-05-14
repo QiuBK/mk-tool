@@ -254,6 +254,165 @@
   word-break: break-all;
 }
 
+.replayBtn {
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 3px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.replayBtn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.replayBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.apiDetailActions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.editRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.editLabel {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  min-width: 80px;
+  flex-shrink: 0;
+}
+
+.editInput {
+  flex: 1;
+  padding: 4px 8px;
+  font-size: 11px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: monospace;
+  min-width: 0;
+}
+
+.editInput:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.editSelect {
+  padding: 4px 8px;
+  font-size: 11px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.editSection {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-border);
+}
+
+.editSectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.editParamRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.editParamKey {
+  padding: 3px 6px;
+  font-size: 11px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+  font-family: monospace;
+  width: 100px;
+  flex-shrink: 0;
+}
+
+.editParamVal {
+  flex: 1;
+  padding: 3px 6px;
+  font-size: 11px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: monospace;
+  min-width: 0;
+}
+
+.editParamVal:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.removeParamBtn {
+  background: none;
+  border: none;
+  color: #e74c3c;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  flex-shrink: 0;
+}
+
+.removeParamBtn:hover {
+  opacity: 0.7;
+}
+
+.editTextarea {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 11px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: monospace;
+  resize: vertical;
+  min-height: 60px;
+  box-sizing: border-box;
+}
+
+.editTextarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.statusOk {
+  color: #49cc90;
+}
+
+.statusErr {
+  color: #f93e3e;
+}
+
 .listItems li:last-child {
   border-bottom: none;
 }

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
-import { scrapeCurrentPage, tableToText, listToText, tableToCsv, exportTableToExcel, getCapturedRequests, clearCapturedRequests, requestToText, requestsToCsv } from '../../services/scraperService'
+import { scrapeCurrentPage, tableToText, listToText, tableToCsv, exportTableToExcel, getCapturedRequests, clearCapturedRequests, requestToText, requestsToCsv, replayRequest } from '../../services/scraperService'
 import { CopyButton } from '../../components/CopyButton/CopyButton'
-import type { ScrapeResult, ScrapedTable, ScrapedList, CapturedRequest } from '../../types'
+import type { ScrapeResult, ScrapedTable, ScrapedList, CapturedRequest, ReplayResponse } from '../../types'
 import styles from './ScraperTool.module.css'
 
 export function ScraperTool() {
@@ -11,6 +11,14 @@ export function ScraperTool() {
   const [activeTab, setActiveTab] = useState<'tables' | 'lists' | 'api'>('tables')
   const [apiRequests, setApiRequests] = useState<CapturedRequest[]>([])
   const [selectedReq, setSelectedReq] = useState<CapturedRequest | null>(null)
+  const [editMode, setEditMode] = useState(false)
+  const [editUrl, setEditUrl] = useState('')
+  const [editMethod, setEditMethod] = useState('GET')
+  const [editBody, setEditBody] = useState('')
+  const [editContentType, setEditContentType] = useState('')
+  const [replayResp, setReplayResp] = useState<ReplayResponse | null>(null)
+  const [replayLoading, setReplayLoading] = useState(false)
+  const [replayError, setReplayError] = useState('')
 
   const handleScrape = async () => {
     setLoading(true)
@@ -53,7 +61,41 @@ export function ScraperTool() {
         await clearCapturedRequests(tab.id)
         setApiRequests([])
         setSelectedReq(null)
+        setEditMode(false)
+        setReplayResp(null)
       }
+    }
+  }
+
+  const handleSelectReq = (req: CapturedRequest) => {
+    setSelectedReq(req)
+    setEditMode(false)
+    setReplayResp(null)
+    setReplayError('')
+    setEditUrl(req.url)
+    setEditMethod(req.method)
+    setEditBody(req.requestBody || '')
+    setEditContentType(req.contentType || 'application/json')
+  }
+
+  const handleStartEdit = () => {
+    if (!selectedReq) return
+    setEditMode(true)
+    setReplayResp(null)
+    setReplayError('')
+  }
+
+  const handleReplay = async () => {
+    setReplayLoading(true)
+    setReplayError('')
+    setReplayResp(null)
+    try {
+      const resp = await replayRequest(editUrl, editMethod, editBody || null, editContentType || null)
+      setReplayResp(resp)
+    } catch (e) {
+      setReplayError(e instanceof Error ? e.message : '请求失败')
+    } finally {
+      setReplayLoading(false)
     }
   }
 
@@ -103,6 +145,35 @@ export function ScraperTool() {
     } catch {
       return {}
     }
+  }
+
+  const [editParams, setEditParams] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    if (selectedReq && editMode) {
+      setEditParams(getUrlParams(selectedReq.url))
+    }
+  }, [selectedReq, editMode])
+
+  const handleParamChange = (key: string, value: string) => {
+    setEditParams((prev) => ({ ...prev, [key]: value }))
+    const baseUrl = editUrl.split('?')[0]
+    const newParams = { ...editParams, [key]: value }
+    const u = new URL(baseUrl)
+    Object.entries(newParams).forEach(([k, v]) => u.searchParams.set(k, v))
+    setEditUrl(u.toString())
+  }
+
+  const handleAddParam = () => {
+    setEditParams((prev) => ({ ...prev, [`param${Object.keys(prev).length + 1}`]: '' }))
+  }
+
+  const handleRemoveParam = (key: string) => {
+    setEditParams((prev) => {
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
   }
 
   return (
@@ -178,7 +249,7 @@ export function ScraperTool() {
                       <div
                         key={req.id}
                         className={`${styles.apiItem} ${selectedReq?.id === req.id ? styles.apiItemActive : ''}`}
-                        onClick={() => setSelectedReq(req)}
+                        onClick={() => handleSelectReq(req)}
                       >
                         <div className={styles.apiItemHeader}>
                           <span className={`${styles.methodBadge} ${styles[`method_${req.method.toLowerCase()}`]}`}>
@@ -193,48 +264,138 @@ export function ScraperTool() {
                   </div>
                   {selectedReq && (
                     <div className={styles.apiDetail}>
-                      <div className={styles.apiDetailSection}>
-                        <div className={styles.apiDetailHeader}>
-                          <span>请求信息</span>
-                          <CopyButton text={requestToText(selectedReq)} label="复制" />
-                        </div>
-                        <div className={styles.apiDetailRow}>
-                          <span className={styles.apiDetailLabel}>URL</span>
-                          <code className={styles.apiDetailValue}>{selectedReq.url}</code>
-                        </div>
-                        <div className={styles.apiDetailRow}>
-                          <span className={styles.apiDetailLabel}>Method</span>
-                          <code className={styles.apiDetailValue}>{selectedReq.method}</code>
-                        </div>
-                        {selectedReq.contentType && (
-                          <div className={styles.apiDetailRow}>
-                            <span className={styles.apiDetailLabel}>Content-Type</span>
-                            <code className={styles.apiDetailValue}>{selectedReq.contentType}</code>
+                      {!editMode ? (
+                        <>
+                          <div className={styles.apiDetailSection}>
+                            <div className={styles.apiDetailHeader}>
+                              <span>请求信息</span>
+                              <div className={styles.apiDetailActions}>
+                                <button className={styles.replayBtn} onClick={handleStartEdit}>✏️ 编辑重发</button>
+                                <CopyButton text={requestToText(selectedReq)} label="复制" />
+                              </div>
+                            </div>
+                            <div className={styles.apiDetailRow}>
+                              <span className={styles.apiDetailLabel}>URL</span>
+                              <code className={styles.apiDetailValue}>{selectedReq.url}</code>
+                            </div>
+                            <div className={styles.apiDetailRow}>
+                              <span className={styles.apiDetailLabel}>Method</span>
+                              <code className={styles.apiDetailValue}>{selectedReq.method}</code>
+                            </div>
+                            {selectedReq.contentType && (
+                              <div className={styles.apiDetailRow}>
+                                <span className={styles.apiDetailLabel}>Content-Type</span>
+                                <code className={styles.apiDetailValue}>{selectedReq.contentType}</code>
+                              </div>
+                            )}
+                            {selectedReq.status != null && (
+                              <div className={styles.apiDetailRow}>
+                                <span className={styles.apiDetailLabel}>Status</span>
+                                <code className={styles.apiDetailValue}>{selectedReq.status}</code>
+                              </div>
+                            )}
                           </div>
-                        )}
-                        {selectedReq.status != null && (
-                          <div className={styles.apiDetailRow}>
-                            <span className={styles.apiDetailLabel}>Status</span>
-                            <code className={styles.apiDetailValue}>{selectedReq.status}</code>
-                          </div>
-                        )}
-                      </div>
-                      {Object.keys(getUrlParams(selectedReq.url)).length > 0 && (
+                          {Object.keys(getUrlParams(selectedReq.url)).length > 0 && (
+                            <div className={styles.apiDetailSection}>
+                              <div className={styles.apiDetailHeader}>
+                                <span>Query 参数</span>
+                                <CopyButton text={JSON.stringify(getUrlParams(selectedReq.url), null, 2)} label="复制" />
+                              </div>
+                              <pre className={styles.apiDetailPre}>{JSON.stringify(getUrlParams(selectedReq.url), null, 2)}</pre>
+                            </div>
+                          )}
+                          {selectedReq.requestBody && (
+                            <div className={styles.apiDetailSection}>
+                              <div className={styles.apiDetailHeader}>
+                                <span>请求体</span>
+                                <CopyButton text={selectedReq.requestBody} label="复制" />
+                              </div>
+                              <pre className={styles.apiDetailPre}>{tryFormatJson(selectedReq.requestBody)}</pre>
+                            </div>
+                          )}
+                        </>
+                      ) : (
                         <div className={styles.apiDetailSection}>
                           <div className={styles.apiDetailHeader}>
-                            <span>Query 参数</span>
-                            <CopyButton text={JSON.stringify(getUrlParams(selectedReq.url), null, 2)} label="复制" />
+                            <span>编辑请求参数</span>
+                            <div className={styles.apiDetailActions}>
+                              <button className={styles.replayBtn} onClick={handleReplay} disabled={replayLoading}>
+                                {replayLoading ? '发送中...' : '🚀 发送请求'}
+                              </button>
+                              <button className={styles.smallBtn} onClick={() => setEditMode(false)}>取消</button>
+                            </div>
                           </div>
-                          <pre className={styles.apiDetailPre}>{JSON.stringify(getUrlParams(selectedReq.url), null, 2)}</pre>
-                        </div>
-                      )}
-                      {selectedReq.requestBody && (
-                        <div className={styles.apiDetailSection}>
-                          <div className={styles.apiDetailHeader}>
-                            <span>请求体</span>
-                            <CopyButton text={selectedReq.requestBody} label="复制" />
+
+                          <div className={styles.editRow}>
+                            <label className={styles.editLabel}>Method</label>
+                            <select className={styles.editSelect} value={editMethod} onChange={(e) => setEditMethod(e.target.value)}>
+                              <option>GET</option>
+                              <option>POST</option>
+                              <option>PUT</option>
+                              <option>PATCH</option>
+                              <option>DELETE</option>
+                            </select>
                           </div>
-                          <pre className={styles.apiDetailPre}>{tryFormatJson(selectedReq.requestBody)}</pre>
+
+                          <div className={styles.editRow}>
+                            <label className={styles.editLabel}>URL</label>
+                            <input className={styles.editInput} value={editUrl} onChange={(e) => setEditUrl(e.target.value)} />
+                          </div>
+
+                          <div className={styles.editRow}>
+                            <label className={styles.editLabel}>Content-Type</label>
+                            <input className={styles.editInput} value={editContentType} onChange={(e) => setEditContentType(e.target.value)} />
+                          </div>
+
+                          {Object.keys(editParams).length > 0 && (
+                            <div className={styles.editSection}>
+                              <div className={styles.editSectionHeader}>
+                                <span>Query 参数</span>
+                                <button className={styles.smallBtn} onClick={handleAddParam}>+ 添加</button>
+                              </div>
+                              {Object.entries(editParams).map(([key, val]) => (
+                                <div key={key} className={styles.editParamRow}>
+                                  <input className={styles.editParamKey} value={key} readOnly />
+                                  <input className={styles.editParamVal} value={val} onChange={(e) => handleParamChange(key, e.target.value)} />
+                                  <button className={styles.removeParamBtn} onClick={() => handleRemoveParam(key)}>✕</button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {editMethod !== 'GET' && (
+                            <div className={styles.editSection}>
+                              <div className={styles.editSectionHeader}>
+                                <span>请求体</span>
+                                <CopyButton text={editBody} label="复制" />
+                              </div>
+                              <textarea
+                                className={styles.editTextarea}
+                                value={editBody}
+                                onChange={(e) => setEditBody(e.target.value)}
+                                rows={6}
+                                placeholder="输入请求体 JSON..."
+                              />
+                            </div>
+                          )}
+
+                          {replayError && <div className={styles.error}>{replayError}</div>}
+
+                          {replayResp && (
+                            <div className={styles.editSection}>
+                              <div className={styles.editSectionHeader}>
+                                <span>响应结果</span>
+                                <CopyButton text={replayResp.body} label="复制" />
+                              </div>
+                              <div className={styles.apiDetailRow}>
+                                <span className={styles.apiDetailLabel}>Status</span>
+                                <code className={`${styles.apiDetailValue} ${replayResp.status < 400 ? styles.statusOk : styles.statusErr}`}>
+                                  {replayResp.status} {replayResp.statusText}
+                                </code>
+                              </div>
+                              <pre className={styles.apiDetailPre}>{tryFormatJson(replayResp.body)}</pre>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
