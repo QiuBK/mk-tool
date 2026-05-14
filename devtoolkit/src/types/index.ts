@@ -131,6 +131,18 @@ export interface ScrapeResult {
   title: string
 }
 
+export interface CapturedRequest {
+  id: string
+  url: string
+  method: string
+  type: 'xhr' | 'fetch'
+  timestamp: number
+  requestBody: string | null
+  contentType: string | null
+  status: number | null
+  tabId: number
+}
+
 export interface HistoryItem {
   id: string
   toolType: ToolType

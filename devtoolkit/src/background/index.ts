@@ -1,4 +1,6 @@
 let popupWindowId: number | null = null
+const capturedRequests: Map<number, { id: string; url: string; method: string; type: 'xhr' | 'fetch'; timestamp: number; requestBody: string | null; contentType: string | null; status: number | null; tabId: number }[]> = new Map()
+const MAX_CAPTURED = 200
 
 function applyMode(mode: string) {
   if (mode === 'sidepanel') {
@@ -69,6 +71,19 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     }
     sendResponse({ ok: true })
   }
+
+  if (message.type === 'getCapturedRequests') {
+    const tabId = message.tabId as number
+    const requests = capturedRequests.get(tabId) || []
+    sendResponse({ requests })
+  }
+
+  if (message.type === 'clearCapturedRequests') {
+    const tabId = message.tabId as number
+    capturedRequests.delete(tabId)
+    sendResponse({ ok: true })
+  }
+
   return true
 })
 
@@ -76,4 +91,87 @@ chrome.windows.onRemoved.addListener((windowId) => {
   if (windowId === popupWindowId) {
     popupWindowId = null
   }
+})
+
+chrome.webRequest.onBeforeRequest.addListener(
+  (details) => {
+    if (details.tabId < 0) return
+    const url = new URL(details.url)
+    const isApi = url.pathname.includes('/api/') ||
+      url.pathname.includes('/v1/') ||
+      url.pathname.includes('/v2/') ||
+      url.pathname.includes('/v3/') ||
+      url.pathname.endsWith('.json') ||
+      details.type === 'xmlhttprequest'
+
+    if (!isApi) return
+
+    let requestBody: string | null = null
+    if (details.requestBody) {
+      if (details.requestBody.raw && details.requestBody.raw.length > 0) {
+        try {
+          const decoder = new TextDecoder()
+          requestBody = details.requestBody.raw
+            .map((buf) => decoder.decode(buf.bytes))
+            .join('')
+        } catch { /* ignore */ }
+      }
+      if (details.requestBody.formData) {
+        requestBody = JSON.stringify(details.requestBody.formData)
+      }
+    }
+
+    const entry = {
+      id: `${details.requestId}-${details.timeStamp}`,
+      url: details.url,
+      method: details.method,
+      type: 'xhr' as const,
+      timestamp: details.timeStamp,
+      requestBody,
+      contentType: null as string | null,
+      status: null as number | null,
+      tabId: details.tabId,
+    }
+
+    if (!capturedRequests.has(details.tabId)) {
+      capturedRequests.set(details.tabId, [])
+    }
+    const list = capturedRequests.get(details.tabId)!
+    list.unshift(entry)
+    if (list.length > MAX_CAPTURED) list.length = MAX_CAPTURED
+  },
+  { urls: ['<all_urls>'] },
+  ['requestBody']
+)
+
+chrome.webRequest.onCompleted.addListener(
+  (details) => {
+    if (details.tabId < 0) return
+    const list = capturedRequests.get(details.tabId)
+    if (!list) return
+    const entry = list.find((r) => r.id === `${details.requestId}-${details.timeStamp}`)
+    if (entry) {
+      entry.status = details.statusCode
+    }
+  },
+  { urls: ['<all_urls>'] }
+)
+
+chrome.webRequest.onBeforeSendHeaders.addListener(
+  (details) => {
+    if (details.tabId < 0) return
+    const list = capturedRequests.get(details.tabId)
+    if (!list) return
+    const entry = list.find((r) => r.id === `${details.requestId}-${details.timeStamp}`)
+    if (entry && details.requestHeaders) {
+      const ct = details.requestHeaders.find((h) => h.name.toLowerCase() === 'content-type')
+      if (ct) entry.contentType = ct.value || null
+    }
+  },
+  { urls: ['<all_urls>'] },
+  ['requestHeaders']
+)
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  capturedRequests.delete(tabId)
 })

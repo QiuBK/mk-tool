@@ -1,14 +1,16 @@
-import { useState } from 'react'
-import { scrapeCurrentPage, tableToText, listToText, tableToCsv, exportTableToExcel } from '../../services/scraperService'
+import { useState, useEffect, useCallback } from 'react'
+import { scrapeCurrentPage, tableToText, listToText, tableToCsv, exportTableToExcel, getCapturedRequests, clearCapturedRequests, requestToText, requestsToCsv } from '../../services/scraperService'
 import { CopyButton } from '../../components/CopyButton/CopyButton'
-import type { ScrapeResult, ScrapedTable, ScrapedList } from '../../types'
+import type { ScrapeResult, ScrapedTable, ScrapedList, CapturedRequest } from '../../types'
 import styles from './ScraperTool.module.css'
 
 export function ScraperTool() {
   const [result, setResult] = useState<ScrapeResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [activeTab, setActiveTab] = useState<'tables' | 'lists'>('tables')
+  const [activeTab, setActiveTab] = useState<'tables' | 'lists' | 'api'>('tables')
+  const [apiRequests, setApiRequests] = useState<CapturedRequest[]>([])
+  const [selectedReq, setSelectedReq] = useState<CapturedRequest | null>(null)
 
   const handleScrape = async () => {
     setLoading(true)
@@ -24,6 +26,37 @@ export function ScraperTool() {
     }
   }
 
+  const loadApiRequests = useCallback(async () => {
+    try {
+      if (typeof chrome !== 'undefined' && chrome.tabs) {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+        if (tab?.id) {
+          const reqs = await getCapturedRequests(tab.id)
+          setApiRequests(reqs)
+        }
+      }
+    } catch { /* ignore */ }
+  }, [])
+
+  useEffect(() => {
+    if (activeTab === 'api') {
+      loadApiRequests()
+      const timer = setInterval(loadApiRequests, 2000)
+      return () => clearInterval(timer)
+    }
+  }, [activeTab, loadApiRequests])
+
+  const handleClearApi = async () => {
+    if (typeof chrome !== 'undefined' && chrome.tabs) {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+      if (tab?.id) {
+        await clearCapturedRequests(tab.id)
+        setApiRequests([])
+        setSelectedReq(null)
+      }
+    }
+  }
+
   const handleCopyAll = () => {
     if (!result) return
     const parts: string[] = []
@@ -32,44 +65,82 @@ export function ScraperTool() {
     navigator.clipboard.writeText(parts.join('\n\n'))
   }
 
+  const handleCopyApiAll = () => {
+    const text = apiRequests.map(requestToText).join('\n\n')
+    navigator.clipboard.writeText(text)
+  }
+
+  const handleCopyApiCsv = () => {
+    navigator.clipboard.writeText(requestsToCsv(apiRequests))
+  }
+
+  const formatTime = (ts: number) => new Date(ts).toLocaleTimeString('zh-CN')
+
+  const getShortUrl = (url: string) => {
+    try {
+      const u = new URL(url)
+      return u.pathname + u.search
+    } catch {
+      return url
+    }
+  }
+
+  const tryFormatJson = (text: string): string => {
+    try {
+      const obj = JSON.parse(text)
+      return JSON.stringify(obj, null, 2)
+    } catch {
+      return text
+    }
+  }
+
+  const getUrlParams = (url: string): Record<string, string> => {
+    try {
+      const u = new URL(url)
+      const params: Record<string, string> = {}
+      u.searchParams.forEach((v, k) => { params[k] = v })
+      return params
+    } catch {
+      return {}
+    }
+  }
+
   return (
     <div className={styles.tool}>
       <div className={styles.section}>
         <label className={styles.label}>网页数据抓取</label>
-        <p className={styles.desc}>提取当前页面中的表格和列表数据，支持复制和导出</p>
+        <p className={styles.desc}>提取当前页面中的表格和列表数据，或抓取API接口请求参数</p>
       </div>
       <div className={styles.actions}>
         <button className={styles.scrapeBtn} onClick={handleScrape} disabled={loading}>
-          {loading ? '提取中...' : '🔍 抓取当前页面'}
+          {loading ? '提取中...' : '🔍 抓取页面数据'}
         </button>
-        {result && (
+        <button className={styles.scrapeBtn} onClick={() => setActiveTab('api')} style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}>
+          🌐 接口抓包
+        </button>
+        {(result || apiRequests.length > 0) && activeTab !== 'api' && (
           <button className={styles.copyAllBtn} onClick={handleCopyAll}>
             📋 复制全部
           </button>
         )}
       </div>
       {error && <div className={styles.error}>{error}</div>}
-      {result && (
+
+      {(result || activeTab === 'api') && (
         <div className={styles.results}>
-          <div className={styles.pageInfo}>
-            <span className={styles.pageTitle}>{result.title}</span>
-            <span className={styles.pageUrl}>{result.url}</span>
-          </div>
           <div className={styles.tabs}>
-            <button
-              className={`${styles.tab} ${activeTab === 'tables' ? styles.tabActive : ''}`}
-              onClick={() => setActiveTab('tables')}
-            >
-              表格 ({result.tables.length})
+            <button className={`${styles.tab} ${activeTab === 'tables' ? styles.tabActive : ''}`} onClick={() => setActiveTab('tables')}>
+              表格 ({result?.tables.length || 0})
             </button>
-            <button
-              className={`${styles.tab} ${activeTab === 'lists' ? styles.tabActive : ''}`}
-              onClick={() => setActiveTab('lists')}
-            >
-              列表 ({result.lists.length})
+            <button className={`${styles.tab} ${activeTab === 'lists' ? styles.tabActive : ''}`} onClick={() => setActiveTab('lists')}>
+              列表 ({result?.lists.length || 0})
+            </button>
+            <button className={`${styles.tab} ${activeTab === 'api' ? styles.tabActive : ''}`} onClick={() => setActiveTab('api')}>
+              接口 ({apiRequests.length})
             </button>
           </div>
-          {activeTab === 'tables' && (
+
+          {activeTab === 'tables' && result && (
             <div className={styles.dataList}>
               {result.tables.length === 0 && <p className={styles.empty}>未找到表格数据</p>}
               {result.tables.map((table, i) => (
@@ -77,12 +148,99 @@ export function ScraperTool() {
               ))}
             </div>
           )}
-          {activeTab === 'lists' && (
+
+          {activeTab === 'lists' && result && (
             <div className={styles.dataList}>
               {result.lists.length === 0 && <p className={styles.empty}>未找到列表数据</p>}
               {result.lists.map((list, i) => (
                 <ListCard key={i} list={list} index={i} />
               ))}
+            </div>
+          )}
+
+          {activeTab === 'api' && (
+            <div className={styles.apiPanel}>
+              <div className={styles.apiToolbar}>
+                <button className={styles.smallBtn} onClick={loadApiRequests}>🔄 刷新</button>
+                <button className={styles.smallBtn} onClick={handleCopyApiAll}>📋 复制全部</button>
+                <button className={styles.smallBtn} onClick={handleCopyApiCsv}>CSV</button>
+                <button className={styles.smallBtn} onClick={handleClearApi}>🗑 清空</button>
+              </div>
+              {apiRequests.length === 0 ? (
+                <div className={styles.apiEmpty}>
+                  <p>暂未捕获到接口请求</p>
+                  <p className={styles.apiHint}>请在目标网页上操作触发请求，接口数据会自动捕获</p>
+                </div>
+              ) : (
+                <div className={styles.apiSplit}>
+                  <div className={styles.apiList}>
+                    {apiRequests.map((req) => (
+                      <div
+                        key={req.id}
+                        className={`${styles.apiItem} ${selectedReq?.id === req.id ? styles.apiItemActive : ''}`}
+                        onClick={() => setSelectedReq(req)}
+                      >
+                        <div className={styles.apiItemHeader}>
+                          <span className={`${styles.methodBadge} ${styles[`method_${req.method.toLowerCase()}`]}`}>
+                            {req.method}
+                          </span>
+                          <span className={styles.apiItemStatus}>{req.status ?? '...'}</span>
+                          <span className={styles.apiItemTime}>{formatTime(req.timestamp)}</span>
+                        </div>
+                        <div className={styles.apiItemUrl}>{getShortUrl(req.url)}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {selectedReq && (
+                    <div className={styles.apiDetail}>
+                      <div className={styles.apiDetailSection}>
+                        <div className={styles.apiDetailHeader}>
+                          <span>请求信息</span>
+                          <CopyButton text={requestToText(selectedReq)} label="复制" />
+                        </div>
+                        <div className={styles.apiDetailRow}>
+                          <span className={styles.apiDetailLabel}>URL</span>
+                          <code className={styles.apiDetailValue}>{selectedReq.url}</code>
+                        </div>
+                        <div className={styles.apiDetailRow}>
+                          <span className={styles.apiDetailLabel}>Method</span>
+                          <code className={styles.apiDetailValue}>{selectedReq.method}</code>
+                        </div>
+                        {selectedReq.contentType && (
+                          <div className={styles.apiDetailRow}>
+                            <span className={styles.apiDetailLabel}>Content-Type</span>
+                            <code className={styles.apiDetailValue}>{selectedReq.contentType}</code>
+                          </div>
+                        )}
+                        {selectedReq.status != null && (
+                          <div className={styles.apiDetailRow}>
+                            <span className={styles.apiDetailLabel}>Status</span>
+                            <code className={styles.apiDetailValue}>{selectedReq.status}</code>
+                          </div>
+                        )}
+                      </div>
+                      {Object.keys(getUrlParams(selectedReq.url)).length > 0 && (
+                        <div className={styles.apiDetailSection}>
+                          <div className={styles.apiDetailHeader}>
+                            <span>Query 参数</span>
+                            <CopyButton text={JSON.stringify(getUrlParams(selectedReq.url), null, 2)} label="复制" />
+                          </div>
+                          <pre className={styles.apiDetailPre}>{JSON.stringify(getUrlParams(selectedReq.url), null, 2)}</pre>
+                        </div>
+                      )}
+                      {selectedReq.requestBody && (
+                        <div className={styles.apiDetailSection}>
+                          <div className={styles.apiDetailHeader}>
+                            <span>请求体</span>
+                            <CopyButton text={selectedReq.requestBody} label="复制" />
+                          </div>
+                          <pre className={styles.apiDetailPre}>{tryFormatJson(selectedReq.requestBody)}</pre>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>

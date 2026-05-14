@@ -1,4 +1,4 @@
-import type { ScrapeResult, ScrapedTable, ScrapedList } from '../types'
+import type { ScrapeResult, ScrapedTable, ScrapedList, CapturedRequest } from '../types'
 
 function scrapePageFn() {
   function extractTables(): { headers: string[]; rows: string[][]; caption: string; source: 'table' }[] {
@@ -160,4 +160,51 @@ export async function exportTableToExcel(table: ScrapedTable, fileName?: string)
   a.click()
   URL.revokeObjectURL(url)
   return name
+}
+
+export async function getCapturedRequests(tabId: number): Promise<CapturedRequest[]> {
+  if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) {
+    throw new Error('此功能仅在浏览器扩展中可用')
+  }
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage({ type: 'getCapturedRequests', tabId }, (response) => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message))
+        return
+      }
+      resolve(response?.requests || [])
+    })
+  })
+}
+
+export async function clearCapturedRequests(tabId: number): Promise<void> {
+  if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) return
+  chrome.runtime.sendMessage({ type: 'clearCapturedRequests', tabId })
+}
+
+export function requestToText(req: CapturedRequest): string {
+  const lines: string[] = []
+  lines.push(`[${req.method}] ${req.url}`)
+  if (req.status != null) lines.push(`Status: ${req.status}`)
+  if (req.contentType) lines.push(`Content-Type: ${req.contentType}`)
+  if (req.requestBody) lines.push(`Body: ${req.requestBody}`)
+  return lines.join('\n')
+}
+
+export function requestsToCsv(requests: CapturedRequest[]): string {
+  const headers = ['Method', 'URL', 'Status', 'Content-Type', 'Body', 'Timestamp']
+  const rows = requests.map((r) => [
+    r.method,
+    r.url,
+    String(r.status ?? ''),
+    r.contentType || '',
+    r.requestBody || '',
+    new Date(r.timestamp).toISOString(),
+  ].map((cell) => {
+    if (cell.includes(',') || cell.includes('"') || cell.includes('\n')) {
+      return `"${cell.replace(/"/g, '""')}"`
+    }
+    return cell
+  }).join(','))
+  return [headers.join(','), ...rows].join('\n')
 }
