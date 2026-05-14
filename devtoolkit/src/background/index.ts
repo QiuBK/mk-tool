@@ -1,21 +1,50 @@
-async function applyDisplayMode(mode: string) {
-  if (mode === 'sidepanel') {
-    await chrome.action.setPopup({ popup: '' })
-    await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
-  } else {
-    await chrome.action.setPopup({ popup: 'src/popup/index.html' })
-    await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false })
-  }
+chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false })
+
+function getDisplayMode(): Promise<string> {
+  return new Promise((resolve) => {
+    chrome.storage.local.get('devtoolkit-display-mode', (result) => {
+      resolve((result['devtoolkit-display-mode'] as string) || 'sidepanel')
+    })
+  })
 }
 
-chrome.storage.local.get('devtoolkit-display-mode', (result) => {
-  const mode = (result['devtoolkit-display-mode'] as string) || 'sidepanel'
-  applyDisplayMode(mode)
+function openPopupWindow() {
+  chrome.windows.create({
+    url: chrome.runtime.getURL('src/popup/index.html'),
+    type: 'popup',
+    width: 500,
+    height: 640,
+  })
+}
+
+function openSidePanel(tabId: number) {
+  chrome.sidePanel.open({ tabId })
+}
+
+chrome.action.onClicked.addListener((tab) => {
+  getDisplayMode().then((mode) => {
+    if (mode === 'popup') {
+      openPopupWindow()
+    } else if (tab.id != null) {
+      openSidePanel(tab.id)
+    }
+  })
 })
 
-chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && changes['devtoolkit-display-mode']) {
-    const mode = changes['devtoolkit-display-mode'].newValue as string
-    applyDisplayMode(mode)
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message.type === 'setDisplayMode') {
+    const mode = message.mode as string
+    chrome.storage.local.set({ 'devtoolkit-display-mode': mode })
+    if (mode === 'popup') {
+      openPopupWindow()
+    } else {
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (tabs[0]?.id) {
+          openSidePanel(tabs[0].id)
+        }
+      })
+    }
+    sendResponse({ ok: true })
   }
+  return true
 })

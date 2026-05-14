@@ -20,7 +20,6 @@
     "extension_pages": "script-src 'self'; object-src 'self'"
   },
   "action": {
-    "default_title": "DevToolKit",
-    "default_popup": "src/popup/index.html"
+    "default_title": "DevToolKit"
   }
 }
