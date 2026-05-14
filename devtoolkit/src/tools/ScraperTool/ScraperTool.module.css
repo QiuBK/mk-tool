@@ -438,10 +438,50 @@
   gap: 8px;
 }
 
+.captureBtn {
+  background: #49cc90;
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 4px 12px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.captureBtn:hover {
+  opacity: 0.9;
+}
+
+.stopCaptureBtn {
+  background: #f93e3e;
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 4px 12px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.stopCaptureBtn:hover {
+  opacity: 0.9;
+}
+
+.captureStatus {
+  font-size: 11px;
+  color: #f93e3e;
+  padding: 4px 8px;
+  background: rgba(249, 62, 62, 0.08);
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(249, 62, 62, 0.2);
+}
+
 .apiToolbar {
   display: flex;
   gap: 4px;
   flex-wrap: wrap;
+  align-items: center;
 }
 
 .apiEmpty {

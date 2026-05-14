@@ -162,8 +162,41 @@ export async function exportTableToExcel(table: ScrapedTable, fileName?: string)
   return name
 }
 
-export async function injectInterceptor(): Promise<void> {
-  return
+export async function startCapture(tabId: number): Promise<{ ok: boolean; error?: string }> {
+  if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) {
+    throw new Error('此功能仅在浏览器扩展中可用')
+  }
+  return new Promise((resolve) => {
+    chrome.runtime.sendMessage({ type: 'startCapture', tabId }, (response) => {
+      if (chrome.runtime.lastError) {
+        resolve({ ok: false, error: chrome.runtime.lastError.message })
+        return
+      }
+      resolve(response || { ok: false, error: '未知错误' })
+    })
+  })
+}
+
+export async function stopCapture(tabId: number): Promise<void> {
+  if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) return
+  return new Promise((resolve) => {
+    chrome.runtime.sendMessage({ type: 'stopCapture', tabId }, () => {
+      resolve()
+    })
+  })
+}
+
+export async function isDebuggerAttached(tabId: number): Promise<boolean> {
+  if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) return false
+  return new Promise((resolve) => {
+    chrome.runtime.sendMessage({ type: 'isDebuggerAttached', tabId }, (response) => {
+      if (chrome.runtime.lastError) {
+        resolve(false)
+        return
+      }
+      resolve(response?.attached || false)
+    })
+  })
 }
 
 export async function readPageAuth(): Promise<Record<string, string>> {
@@ -227,17 +260,6 @@ export async function getCapturedRequests(tabId: number): Promise<CapturedReques
 export async function clearCapturedRequests(tabId: number): Promise<void> {
   if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) return
   chrome.runtime.sendMessage({ type: 'clearCapturedRequests', tabId })
-
-  try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-    if (tab?.id) {
-      await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        world: 'MAIN',
-        func: () => { (window as any).__devtoolkit_captured = [] },
-      })
-    }
-  } catch { /* ignore */ }
 }
 
 export function requestToText(req: CapturedRequest): string {

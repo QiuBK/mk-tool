@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { scrapeCurrentPage, tableToText, listToText, tableToCsv, exportTableToExcel, getCapturedRequests, clearCapturedRequests, requestToText, requestsToCsv, replayRequest, injectInterceptor, readPageAuth } from '../../services/scraperService'
+import { scrapeCurrentPage, tableToText, listToText, tableToCsv, exportTableToExcel, getCapturedRequests, clearCapturedRequests, requestToText, requestsToCsv, replayRequest, readPageAuth, startCapture, stopCapture, isDebuggerAttached } from '../../services/scraperService'
 import { CopyButton } from '../../components/CopyButton/CopyButton'
 import type { ScrapeResult, ScrapedTable, ScrapedList, CapturedRequest, ReplayResponse } from '../../types'
 import styles from './ScraperTool.module.css'
@@ -21,6 +21,8 @@ export function ScraperTool() {
   const [replayResp, setReplayResp] = useState<ReplayResponse | null>(null)
   const [replayLoading, setReplayLoading] = useState(false)
   const [replayError, setReplayError] = useState('')
+  const [capturing, setCapturing] = useState(false)
+  const [captureError, setCaptureError] = useState('')
 
   const handleScrape = async () => {
     setLoading(true)
@@ -41,7 +43,8 @@ export function ScraperTool() {
       if (typeof chrome !== 'undefined' && chrome.tabs) {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
         if (tab?.id) {
-          await injectInterceptor()
+          const attached = await isDebuggerAttached(tab.id)
+          setCapturing(attached)
           const reqs = await getCapturedRequests(tab.id)
           setApiRequests(reqs)
         }
@@ -56,6 +59,41 @@ export function ScraperTool() {
       return () => clearInterval(timer)
     }
   }, [activeTab, loadApiRequests])
+
+  const handleStartCapture = async () => {
+    setCaptureError('')
+    try {
+      if (typeof chrome !== 'undefined' && chrome.tabs) {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+        if (tab?.id) {
+          if (tab.url?.startsWith('chrome://') || tab.url?.startsWith('edge://') || tab.url?.startsWith('about:')) {
+            setCaptureError('无法在浏览器内部页面上抓包')
+            return
+          }
+          const res = await startCapture(tab.id)
+          if (res.ok) {
+            setCapturing(true)
+          } else {
+            setCaptureError(res.error || '无法开始抓包')
+          }
+        }
+      }
+    } catch (e) {
+      setCaptureError(e instanceof Error ? e.message : '无法开始抓包')
+    }
+  }
+
+  const handleStopCapture = async () => {
+    try {
+      if (typeof chrome !== 'undefined' && chrome.tabs) {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+        if (tab?.id) {
+          await stopCapture(tab.id)
+          setCapturing(false)
+        }
+      }
+    } catch { /* ignore */ }
+  }
 
   const handleClearApi = async () => {
     if (typeof chrome !== 'undefined' && chrome.tabs) {
@@ -297,15 +335,39 @@ export function ScraperTool() {
           {activeTab === 'api' && (
             <div className={styles.apiPanel}>
               <div className={styles.apiToolbar}>
+                {!capturing ? (
+                  <button className={styles.captureBtn} onClick={handleStartCapture}>▶️ 开始抓包</button>
+                ) : (
+                  <button className={styles.stopCaptureBtn} onClick={handleStopCapture}>⏹ 停止抓包</button>
+                )}
                 <button className={styles.smallBtn} onClick={loadApiRequests}>🔄 刷新</button>
-                <button className={styles.smallBtn} onClick={handleCopyApiAll}>📋 复制全部</button>
-                <button className={styles.smallBtn} onClick={handleCopyApiCsv}>CSV</button>
+                {apiRequests.length > 0 && (
+                  <>
+                    <button className={styles.smallBtn} onClick={handleCopyApiAll}>📋 复制全部</button>
+                    <button className={styles.smallBtn} onClick={handleCopyApiCsv}>CSV</button>
+                  </>
+                )}
                 <button className={styles.smallBtn} onClick={handleClearApi}>🗑 清空</button>
               </div>
+              {capturing && (
+                <div className={styles.captureStatus}>
+                  🔴 正在监听接口请求...（页面顶部会出现调试提示栏）
+                </div>
+              )}
+              {captureError && <div className={styles.error}>{captureError}</div>}
               {apiRequests.length === 0 ? (
                 <div className={styles.apiEmpty}>
-                  <p>暂未捕获到接口请求</p>
-                  <p className={styles.apiHint}>请在目标网页上操作触发请求，接口数据会自动捕获</p>
+                  {!capturing ? (
+                    <>
+                      <p>点击「开始抓包」按钮开始捕获接口请求</p>
+                      <p className={styles.apiHint}>开始抓包后，在目标网页上操作触发请求，接口数据会自动捕获</p>
+                    </>
+                  ) : (
+                    <>
+                      <p>正在监听接口请求...</p>
+                      <p className={styles.apiHint}>请在目标网页上操作触发请求，接口数据会自动捕获</p>
+                    </>
+                  )}
                 </div>
               ) : (
                 <div className={styles.apiSplit}>

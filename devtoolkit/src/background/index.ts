@@ -16,8 +16,8 @@ interface CapturedEntry {
 }
 
 const capturedRequests: Map<number, CapturedEntry[]> = new Map()
-const pendingHeaders: Map<string, Record<string, string>> = new Map()
-const pendingResponseHeaders: Map<string, Record<string, string>> = new Map()
+const debuggerTabs: Set<number> = new Set()
+const pendingExtraHeaders: Map<string, Record<string, string>> = new Map()
 const MAX_CAPTURED = 200
 
 function applyMode(mode: string) {
@@ -91,17 +91,53 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true
   }
 
+  if (message.type === 'startCapture') {
+    const tabId = message.tabId as number
+    if (debuggerTabs.has(tabId)) {
+      sendResponse({ ok: true })
+      return true
+    }
+    chrome.debugger.attach({ tabId }, '1.3', () => {
+      if (chrome.runtime.lastError) {
+        const msg = chrome.runtime.lastError.message || ''
+        if (msg.includes('already attached')) {
+          debuggerTabs.add(tabId)
+          sendResponse({ ok: true })
+          return
+        }
+        sendResponse({ ok: false, error: msg })
+        return
+      }
+      debuggerTabs.add(tabId)
+      chrome.debugger.sendCommand({ tabId }, 'Network.enable', { maxPostDataSize: 10485760 }, () => {
+        if (chrome.runtime.lastError) {
+          sendResponse({ ok: false, error: chrome.runtime.lastError.message })
+          return
+        }
+        sendResponse({ ok: true })
+      })
+    })
+    return true
+  }
+
+  if (message.type === 'stopCapture') {
+    const tabId = message.tabId as number
+    chrome.debugger.detach({ tabId }, () => {
+      debuggerTabs.delete(tabId)
+      sendResponse({ ok: true })
+    })
+    return true
+  }
+
+  if (message.type === 'isDebuggerAttached') {
+    const tabId = message.tabId as number
+    sendResponse({ attached: debuggerTabs.has(tabId) })
+    return true
+  }
+
   if (message.type === 'getCapturedRequests') {
     const tabId = message.tabId as number
     const requests = capturedRequests.get(tabId) || []
-    for (const req of requests) {
-      if (Object.keys(req.headers).length === 0 && pendingHeaders.has(req.id)) {
-        req.headers = pendingHeaders.get(req.id)!
-      }
-      if (Object.keys(req.responseHeaders).length === 0 && pendingResponseHeaders.has(req.id)) {
-        req.responseHeaders = pendingResponseHeaders.get(req.id)!
-      }
-    }
     sendResponse({ requests: JSON.parse(JSON.stringify(requests)) })
     return true
   }
@@ -116,133 +152,160 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   return false
 })
 
+chrome.debugger.onEvent.addListener((source, method, params) => {
+  if (!source.tabId) return
+  const tabId = source.tabId
+  const p = params as any
+
+  if (method === 'Network.requestWillBeSent') {
+    const reqType = p.type as string
+    if (reqType !== 'XHR' && reqType !== 'Fetch') return
+
+    const headers: Record<string, string> = {}
+    if (p.request?.headers) {
+      for (const [k, v] of Object.entries(p.request.headers)) {
+        headers[k] = String(v)
+      }
+    }
+
+    const extraHeaders = pendingExtraHeaders.get(p.requestId)
+    if (extraHeaders) {
+      for (const [k, v] of Object.entries(extraHeaders)) {
+        if (!headers[k]) headers[k] = v
+      }
+      pendingExtraHeaders.delete(p.requestId)
+    }
+
+    let requestBody: string | null = null
+    if (p.request?.postData) {
+      requestBody = p.request.postData
+    }
+
+    const ct = headers['Content-Type'] || headers['content-type'] || null
+
+    const existingList = capturedRequests.get(tabId)
+    const existing = existingList?.find(r => r.id === p.requestId)
+    if (existing) {
+      existing.url = p.request.url
+      existing.method = p.request.method
+      existing.headers = headers
+      existing.requestBody = requestBody
+      existing.contentType = ct
+      existing.status = null
+      existing.responseHeaders = {}
+      existing.responseBody = null
+      return
+    }
+
+    const entry: CapturedEntry = {
+      id: p.requestId,
+      url: p.request.url,
+      method: p.request.method,
+      type: reqType === 'Fetch' ? 'fetch' : 'xhr',
+      timestamp: p.wallTime ? p.wallTime * 1000 : Date.now(),
+      requestBody,
+      contentType: ct,
+      headers,
+      status: null,
+      tabId,
+      responseHeaders: {},
+      responseBody: null,
+    }
+
+    if (!capturedRequests.has(tabId)) {
+      capturedRequests.set(tabId, [])
+    }
+    const list = capturedRequests.get(tabId)!
+    list.unshift(entry)
+    if (list.length > MAX_CAPTURED) list.length = MAX_CAPTURED
+  }
+
+  if (method === 'Network.requestWillBeSentExtraInfo') {
+    const extraHeaders: Record<string, string> = {}
+    if (p.headers) {
+      for (const [k, v] of Object.entries(p.headers)) {
+        extraHeaders[k] = String(v)
+      }
+    }
+
+    const list = capturedRequests.get(tabId)
+    const entry = list?.find(r => r.id === p.requestId)
+    if (entry) {
+      for (const [k, v] of Object.entries(extraHeaders)) {
+        if (!entry.headers[k]) entry.headers[k] = v
+      }
+    } else {
+      pendingExtraHeaders.set(p.requestId, extraHeaders)
+    }
+  }
+
+  if (method === 'Network.responseReceived') {
+    const list = capturedRequests.get(tabId)
+    if (!list) return
+
+    const entry = list.find(r => r.id === p.requestId)
+    if (!entry) return
+
+    const respHeaders: Record<string, string> = {}
+    if (p.response?.headers) {
+      for (const [k, v] of Object.entries(p.response.headers)) {
+        respHeaders[k] = String(v)
+      }
+    }
+
+    entry.status = p.response?.status || null
+    entry.responseHeaders = respHeaders
+  }
+
+  if (method === 'Network.loadingFinished') {
+    const list = capturedRequests.get(tabId)
+    if (!list) return
+
+    const entry = list.find(r => r.id === p.requestId)
+    if (!entry) return
+
+    chrome.debugger.sendCommand(source, 'Network.getResponseBody', {
+      requestId: p.requestId,
+    }, (result: any) => {
+      if (chrome.runtime.lastError) return
+      if (result?.body) {
+        if (result.base64Encoded) {
+          try {
+            entry.responseBody = atob(result.body)
+          } catch {
+            entry.responseBody = '[Binary Data]'
+          }
+        } else {
+          entry.responseBody = result.body
+        }
+      }
+    })
+  }
+
+  if (method === 'Network.loadingFailed') {
+    const list = capturedRequests.get(tabId)
+    if (!list) return
+
+    const entry = list.find(r => r.id === p.requestId)
+    if (entry && entry.status === null) {
+      entry.status = 0
+    }
+  }
+})
+
+chrome.debugger.onDetach.addListener((source) => {
+  if (source.tabId) {
+    debuggerTabs.delete(source.tabId)
+  }
+})
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  capturedRequests.delete(tabId)
+  debuggerTabs.delete(tabId)
+})
+
 chrome.windows.onRemoved.addListener((windowId) => {
   if (windowId === popupWindowId) {
     popupWindowId = null
   }
-})
-
-chrome.webRequest.onBeforeRequest.addListener(
-  (details) => {
-    if (details.tabId < 0) return
-    const url = new URL(details.url)
-    const isApi = url.pathname.includes('/api/') ||
-      url.pathname.includes('/v1/') ||
-      url.pathname.includes('/v2/') ||
-      url.pathname.includes('/v3/') ||
-      url.pathname.endsWith('.json') ||
-      details.type === 'xmlhttprequest'
-
-    if (!isApi) return
-
-    let requestBody: string | null = null
-    if (details.requestBody) {
-      if (details.requestBody.raw && details.requestBody.raw.length > 0) {
-        try {
-          const decoder = new TextDecoder()
-          requestBody = details.requestBody.raw
-            .map((buf) => decoder.decode(buf.bytes))
-            .join('')
-        } catch { /* ignore */ }
-      }
-      if (details.requestBody.formData) {
-        requestBody = JSON.stringify(details.requestBody.formData)
-      }
-    }
-
-    const entry: CapturedEntry = {
-      id: details.requestId,
-      url: details.url,
-      method: details.method,
-      type: 'xhr',
-      timestamp: details.timeStamp,
-      requestBody,
-      contentType: null,
-      headers: pendingHeaders.get(details.requestId) || {},
-      status: null,
-      tabId: details.tabId,
-      responseHeaders: pendingResponseHeaders.get(details.requestId) || {},
-      responseBody: null,
-    }
-
-    pendingHeaders.delete(details.requestId)
-    pendingResponseHeaders.delete(details.requestId)
-
-    if (!capturedRequests.has(details.tabId)) {
-      capturedRequests.set(details.tabId, [])
-    }
-    const list = capturedRequests.get(details.tabId)!
-    list.unshift(entry)
-    if (list.length > MAX_CAPTURED) list.length = MAX_CAPTURED
-  },
-  { urls: ['<all_urls>'] },
-  ['requestBody']
-)
-
-chrome.webRequest.onBeforeSendHeaders.addListener(
-  (details) => {
-    if (!details.requestHeaders) return
-    const headers: Record<string, string> = {}
-    details.requestHeaders.forEach((h) => {
-      if (h.value) headers[h.name] = h.value
-    })
-
-    const list = details.tabId >= 0 ? capturedRequests.get(details.tabId) : null
-    if (list) {
-      const entry = list.find((r) => r.id === details.requestId)
-      if (entry) {
-        entry.headers = headers
-        const ct = details.requestHeaders.find((h) => h.name.toLowerCase() === 'content-type')
-        if (ct) entry.contentType = ct.value || null
-      } else {
-        pendingHeaders.set(details.requestId, headers)
-      }
-    } else {
-      pendingHeaders.set(details.requestId, headers)
-    }
-  },
-  { urls: ['<all_urls>'] },
-  ['requestHeaders', 'extraHeaders']
-)
-
-chrome.webRequest.onHeadersReceived.addListener(
-  (details) => {
-    if (!details.responseHeaders) return
-    const headers: Record<string, string> = {}
-    details.responseHeaders.forEach((h) => {
-      if (h.value) headers[h.name] = h.value
-    })
-
-    const list = details.tabId >= 0 ? capturedRequests.get(details.tabId) : null
-    if (list) {
-      const entry = list.find((r) => r.id === details.requestId)
-      if (entry) {
-        entry.responseHeaders = headers
-        entry.status = details.statusCode
-      } else {
-        pendingResponseHeaders.set(details.requestId, headers)
-      }
-    } else {
-      pendingResponseHeaders.set(details.requestId, headers)
-    }
-  },
-  { urls: ['<all_urls>'] },
-  ['responseHeaders', 'extraHeaders']
-)
-
-chrome.webRequest.onCompleted.addListener(
-  (details) => {
-    if (details.tabId < 0) return
-    const list = capturedRequests.get(details.tabId)
-    if (!list) return
-    const entry = list.find((r) => r.id === details.requestId)
-    if (entry && entry.status == null) {
-      entry.status = details.statusCode
-    }
-  },
-  { urls: ['<all_urls>'] }
-)
-
-chrome.tabs.onRemoved.addListener((tabId) => {
-  capturedRequests.delete(tabId)
 })
