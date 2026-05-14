@@ -8,8 +8,14 @@
   cursor: pointer;
   line-height: 1;
   transition: background 0.15s;
+  min-width: 32px;
 }
 
 .toggle:hover {
   background: var(--color-bg-hover);
+}
+
+.hint {
+  font-size: 11px;
+  white-space: nowrap;
 }
