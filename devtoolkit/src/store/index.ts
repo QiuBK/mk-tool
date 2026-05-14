@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
-import type { ToolType, ThemeMode } from '../types'
+import type { ToolType, ThemeMode, DisplayMode } from '../types'
 
 interface AppState {
   activeTool: ToolType
@@ -10,6 +10,8 @@ interface AppState {
   theme: ThemeMode
   setTheme: (theme: ThemeMode) => void
   resolvedTheme: 'light' | 'dark'
+  displayMode: DisplayMode
+  setDisplayMode: (mode: DisplayMode) => void
   historyOpen: boolean
   setHistoryOpen: (open: boolean) => void
   clipboardFeedback: string | null
@@ -67,6 +69,8 @@ export const useAppStore = create<AppState>()(
         document.documentElement.setAttribute('data-theme', resolved)
       },
       resolvedTheme: getSystemTheme(),
+      displayMode: 'sidepanel',
+      setDisplayMode: (mode) => set({ displayMode: mode }),
       historyOpen: false,
       setHistoryOpen: (open) => set({ historyOpen: open }),
       clipboardFeedback: null,
@@ -79,6 +83,7 @@ export const useAppStore = create<AppState>()(
         activeTool: state.activeTool,
         toolStates: state.toolStates,
         theme: state.theme,
+        displayMode: state.displayMode,
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {

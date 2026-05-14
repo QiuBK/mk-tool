@@ -2,6 +2,8 @@ export type ToolType = 'json' | 'base64' | 'timestamp' | 'cron' | 'url' | 'color
 
 export type ThemeMode = 'light' | 'dark' | 'system'
 
+export type DisplayMode = 'sidepanel' | 'popup'
+
 export interface ServiceResult<T> {
   success: true
   data: T

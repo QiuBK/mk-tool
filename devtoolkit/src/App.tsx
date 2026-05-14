@@ -4,6 +4,7 @@ import { TOOL_LIST } from './types'
 import { ToolNav } from './components/ToolNav/ToolNav'
 import { ThemeToggle } from './components/ThemeToggle/ThemeToggle'
 import { HistoryPanel } from './components/HistoryPanel/HistoryPanel'
+import { DisplayModeToggle } from './components/DisplayModeToggle/DisplayModeToggle'
 
 const JsonTool = lazy(() => import('./tools/JsonTool/JsonTool'))
 const Base64Tool = lazy(() => import('./tools/Base64Tool/Base64Tool'))
@@ -52,6 +53,7 @@ export default function App() {
       <header className={styles.header}>
         <h1 className={styles.title}>DevToolKit</h1>
         <div className={styles.headerActions}>
+          <DisplayModeToggle />
           <ThemeToggle />
           <button className={styles.historyBtn} onClick={() => setHistoryOpen(!historyOpen)}>
             📋 历史

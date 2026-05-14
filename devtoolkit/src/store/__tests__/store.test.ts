@@ -24,6 +24,7 @@ describe('useAppStore', () => {
       toolStates: {},
       theme: 'system',
       resolvedTheme: 'light',
+      displayMode: 'sidepanel',
       historyOpen: false,
       clipboardFeedback: null,
     })
@@ -34,6 +35,7 @@ describe('useAppStore', () => {
     const state = useAppStore.getState()
     expect(state.activeTool).toBe('json')
     expect(state.theme).toBe('system')
+    expect(state.displayMode).toBe('sidepanel')
     expect(state.historyOpen).toBe(false)
   })
 
@@ -87,5 +89,13 @@ describe('useAppStore', () => {
     expect(useAppStore.getState().clipboardFeedback).toBe('Copied!')
     useAppStore.getState().setClipboardFeedback(null)
     expect(useAppStore.getState().clipboardFeedback).toBeNull()
+  })
+
+  it('setDisplayMode toggles display mode', () => {
+    expect(useAppStore.getState().displayMode).toBe('sidepanel')
+    useAppStore.getState().setDisplayMode('popup')
+    expect(useAppStore.getState().displayMode).toBe('popup')
+    useAppStore.getState().setDisplayMode('sidepanel')
+    expect(useAppStore.getState().displayMode).toBe('sidepanel')
   })
 })
