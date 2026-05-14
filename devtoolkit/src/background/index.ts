@@ -33,14 +33,6 @@ chrome.storage.local.get('devtoolkit-display-mode', (result) => {
   applyMode(mode)
 })
 
-chrome.scripting.registerContentScripts([{
-  id: 'devtoolkit-interceptor',
-  matches: ['<all_urls>'],
-  js: ['content/interceptor.js'],
-  runAt: 'document_start',
-  world: 'MAIN',
-}]).catch(() => {})
-
 chrome.action.onClicked.addListener((tab) => {
   chrome.storage.local.get('devtoolkit-display-mode', (result) => {
     const mode = (result['devtoolkit-display-mode'] as string) || 'sidepanel'

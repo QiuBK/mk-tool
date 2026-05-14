@@ -1,5 +1,8 @@
 (function () {
   const CAPTURED_KEY = '__devtoolkit_captured'
+  const PATCHED_KEY = '__devtoolkit_patched'
+  if (window[PATCHED_KEY]) return
+  window[PATCHED_KEY] = true
   if (!window[CAPTURED_KEY]) {
     window[CAPTURED_KEY] = []
   }
@@ -41,7 +44,7 @@
     const body = init?.body ? String(init.body) : null
 
     if (isApiUrl(url)) {
-      addEntry({
+      const entry = {
         id: `fetch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         url,
         method,
@@ -52,16 +55,25 @@
         headers: { ...headers },
         status: null,
         tabId: -1,
+        responseHeaders: {},
+        responseBody: null,
+      }
+      addEntry(entry)
+      return origFetch.apply(this, arguments).then(async (response) => {
+        entry.status = response.status
+        const respHeaders = {}
+        response.headers.forEach((v, k) => { respHeaders[k] = v })
+        entry.responseHeaders = respHeaders
+        try {
+          const cloned = response.clone()
+          const text = await cloned.text()
+          entry.responseBody = text.length > 50000 ? text.slice(0, 50000) : text
+        } catch {}
+        return response
       })
     }
 
-    return origFetch.apply(this, arguments).then((response) => {
-      if (isApiUrl(url)) {
-        const entry = captured.find((e) => e.url === url && e.method === method && e.status === null)
-        if (entry) entry.status = response.status
-      }
-      return response
-    })
+    return origFetch.apply(this, arguments)
   }
 
   const origOpen = XMLHttpRequest.prototype.open
@@ -94,10 +106,28 @@
         headers: { ...info.headers },
         status: null,
         tabId: -1,
+        responseHeaders: {},
+        responseBody: null,
       }
       addEntry(entry)
       this.addEventListener('load', function () {
         entry.status = this.status
+        try {
+          const allHeaders = this.getAllResponseHeaders()
+          if (allHeaders) {
+            const respHeaders = {}
+            allHeaders.trim().split(/[\r\n]+/).forEach(function (line) {
+              const parts = line.split(': ')
+              const key = parts.shift()
+              if (key) respHeaders[key] = parts.join(': ')
+            })
+            entry.responseHeaders = respHeaders
+          }
+        } catch {}
+        try {
+          const text = this.responseText
+          entry.responseBody = text && text.length > 50000 ? text.slice(0, 50000) : text
+        } catch {}
       })
     }
     return origSend.apply(this, arguments)

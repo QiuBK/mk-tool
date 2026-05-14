@@ -163,19 +163,7 @@ export async function exportTableToExcel(table: ScrapedTable, fileName?: string)
 }
 
 export async function injectInterceptor(): Promise<void> {
-  if (typeof chrome === 'undefined' || !chrome.tabs || !chrome.scripting) return
-
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-  if (!tab?.id) return
-  if (tab.url?.startsWith('chrome://') || tab.url?.startsWith('edge://') || tab.url?.startsWith('about:')) return
-
-  try {
-    await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      files: ['content/interceptor.js'],
-      world: 'MAIN',
-    })
-  } catch { /* ignore */ }
+  return
 }
 
 export async function readPageAuth(): Promise<Record<string, string>> {
@@ -229,12 +217,6 @@ export async function getCapturedRequests(tabId: number): Promise<CapturedReques
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
     if (tab?.id && !tab.url?.startsWith('chrome://') && !tab.url?.startsWith('edge://')) {
-      await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        files: ['content/interceptor.js'],
-        world: 'MAIN',
-      })
-      await new Promise((r) => setTimeout(r, 100))
       const results = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         world: 'MAIN',
