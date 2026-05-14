@@ -70,20 +70,9 @@ export function ScraperTool() {
     }
   }
 
-  const handleSelectReq = async (req: CapturedRequest) => {
-    const enriched = { ...req }
-    if (!enriched.headers || Object.keys(enriched.headers).length === 0) {
-      enriched.headers = {}
-    }
-    if (!enriched.headers['Authorization'] && !enriched.headers['authorization']) {
-      try {
-        const pageAuth = await readPageAuth()
-        if (pageAuth['Authorization']) {
-          enriched.headers['Authorization'] = pageAuth['Authorization']
-        }
-      } catch { /* ignore */ }
-    }
-    if (enriched.contentType) {
+  const handleSelectReq = (req: CapturedRequest) => {
+    const enriched = { ...req, headers: { ...(req.headers || {}) } }
+    if (enriched.contentType && !enriched.headers['Content-Type']) {
       enriched.headers['Content-Type'] = enriched.contentType
     }
     setSelectedReq(enriched)
@@ -96,6 +85,19 @@ export function ScraperTool() {
     setEditContentType(enriched.contentType || 'application/json')
     setEditHeaders(enriched.headers)
     setEditParams(getUrlParams(enriched.url))
+
+    if (!enriched.headers['Authorization'] && !enriched.headers['authorization']) {
+      readPageAuth().then((pageAuth) => {
+        if (pageAuth['Authorization']) {
+          setSelectedReq((prev) => {
+            if (!prev) return prev
+            const updated = { ...prev, headers: { ...prev.headers, Authorization: pageAuth['Authorization'] } }
+            setEditHeaders(updated.headers)
+            return updated
+          })
+        }
+      }).catch(() => {})
+    }
   }
 
   const handleStartEdit = async () => {
@@ -391,24 +393,32 @@ export function ScraperTool() {
                               <pre className={styles.apiDetailPre}>{tryFormatJson(selectedReq.requestBody)}</pre>
                             </div>
                           )}
-                          {Object.keys(selectedReq.responseHeaders || {}).length > 0 && (
-                            <div className={styles.apiDetailSection}>
-                              <div className={styles.apiDetailHeader}>
-                                <span>响应头</span>
+                          <div className={styles.apiDetailSection}>
+                            <div className={styles.apiDetailHeader}>
+                              <span>响应头</span>
+                              {Object.keys(selectedReq.responseHeaders || {}).length > 0 && (
                                 <CopyButton text={JSON.stringify(selectedReq.responseHeaders, null, 2)} label="复制" />
-                              </div>
+                              )}
+                            </div>
+                            {Object.keys(selectedReq.responseHeaders || {}).length > 0 ? (
                               <pre className={styles.apiDetailPre}>{JSON.stringify(selectedReq.responseHeaders, null, 2)}</pre>
-                            </div>
-                          )}
-                          {selectedReq.responseBody && (
-                            <div className={styles.apiDetailSection}>
-                              <div className={styles.apiDetailHeader}>
-                                <span>响应体</span>
+                            ) : (
+                              <p className={styles.empty}>响应头未捕获</p>
+                            )}
+                          </div>
+                          <div className={styles.apiDetailSection}>
+                            <div className={styles.apiDetailHeader}>
+                              <span>响应体</span>
+                              {selectedReq.responseBody && (
                                 <CopyButton text={selectedReq.responseBody} label="复制" />
-                              </div>
-                              <pre className={styles.apiDetailPre}>{tryFormatJson(selectedReq.responseBody)}</pre>
+                              )}
                             </div>
-                          )}
+                            {selectedReq.responseBody ? (
+                              <pre className={styles.apiDetailPre}>{tryFormatJson(selectedReq.responseBody)}</pre>
+                            ) : (
+                              <p className={styles.empty}>响应体未捕获，可点击「编辑重发」重新请求获取</p>
+                            )}
+                          </div>
                         </>
                       ) : (
                         <div className={styles.apiDetailSection}>
