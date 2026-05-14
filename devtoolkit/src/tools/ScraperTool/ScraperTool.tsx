@@ -70,17 +70,32 @@ export function ScraperTool() {
     }
   }
 
-  const handleSelectReq = (req: CapturedRequest) => {
-    setSelectedReq(req)
+  const handleSelectReq = async (req: CapturedRequest) => {
+    const enriched = { ...req }
+    if (!enriched.headers || Object.keys(enriched.headers).length === 0) {
+      enriched.headers = {}
+    }
+    if (!enriched.headers['Authorization'] && !enriched.headers['authorization']) {
+      try {
+        const pageAuth = await readPageAuth()
+        if (pageAuth['Authorization']) {
+          enriched.headers['Authorization'] = pageAuth['Authorization']
+        }
+      } catch { /* ignore */ }
+    }
+    if (enriched.contentType) {
+      enriched.headers['Content-Type'] = enriched.contentType
+    }
+    setSelectedReq(enriched)
     setEditMode(false)
     setReplayResp(null)
     setReplayError('')
-    setEditUrl(req.url)
-    setEditMethod(req.method)
-    setEditBody(req.requestBody || '')
-    setEditContentType(req.contentType || 'application/json')
-    setEditHeaders(req.headers || {})
-    setEditParams(getUrlParams(req.url))
+    setEditUrl(enriched.url)
+    setEditMethod(enriched.method)
+    setEditBody(enriched.requestBody || '')
+    setEditContentType(enriched.contentType || 'application/json')
+    setEditHeaders(enriched.headers)
+    setEditParams(getUrlParams(enriched.url))
   }
 
   const handleStartEdit = async () => {
@@ -345,15 +360,19 @@ export function ScraperTool() {
                               </div>
                             )}
                           </div>
-                          {Object.keys(selectedReq.headers || {}).length > 0 && (
-                            <div className={styles.apiDetailSection}>
-                              <div className={styles.apiDetailHeader}>
-                                <span>请求头</span>
+                          <div className={styles.apiDetailSection}>
+                            <div className={styles.apiDetailHeader}>
+                              <span>请求头</span>
+                              {Object.keys(selectedReq.headers || {}).length > 0 && (
                                 <CopyButton text={JSON.stringify(selectedReq.headers, null, 2)} label="复制" />
-                              </div>
-                              <pre className={styles.apiDetailPre}>{JSON.stringify(selectedReq.headers, null, 2)}</pre>
+                              )}
                             </div>
-                          )}
+                            {Object.keys(selectedReq.headers || {}).length > 0 ? (
+                              <pre className={styles.apiDetailPre}>{JSON.stringify(selectedReq.headers, null, 2)}</pre>
+                            ) : (
+                              <p className={styles.empty}>请求头未捕获，点击「编辑重发」可手动添加</p>
+                            )}
+                          </div>
                           {Object.keys(getUrlParams(selectedReq.url)).length > 0 && (
                             <div className={styles.apiDetailSection}>
                               <div className={styles.apiDetailHeader}>
