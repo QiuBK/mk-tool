@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { scrapeCurrentPage, tableToText, listToText, tableToCsv, exportTableToExcel, getCapturedRequests, clearCapturedRequests, requestToText, requestsToCsv, replayRequest } from '../../services/scraperService'
+import { scrapeCurrentPage, tableToText, listToText, tableToCsv, exportTableToExcel, getCapturedRequests, clearCapturedRequests, requestToText, requestsToCsv, replayRequest, injectInterceptor } from '../../services/scraperService'
 import { CopyButton } from '../../components/CopyButton/CopyButton'
 import type { ScrapeResult, ScrapedTable, ScrapedList, CapturedRequest, ReplayResponse } from '../../types'
 import styles from './ScraperTool.module.css'
@@ -41,6 +41,7 @@ export function ScraperTool() {
       if (typeof chrome !== 'undefined' && chrome.tabs) {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
         if (tab?.id) {
+          await injectInterceptor()
           const reqs = await getCapturedRequests(tab.id)
           setApiRequests(reqs)
         }

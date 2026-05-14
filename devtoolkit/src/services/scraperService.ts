@@ -162,24 +162,201 @@ export async function exportTableToExcel(table: ScrapedTable, fileName?: string)
   return name
 }
 
+function interceptorFn() {
+  const w = window as any
+  const CAPTURED_KEY = '__devtoolkit_captured'
+  if (!w[CAPTURED_KEY]) {
+    w[CAPTURED_KEY] = []
+  }
+  if (w.__devtoolkit_patched) return
+  w.__devtoolkit_patched = true
+
+  const captured = w[CAPTURED_KEY]
+  const MAX_CAPTURED = 200
+
+  function isApiUrl(url: string) {
+    try {
+      const u = new URL(url, location.origin)
+      return u.pathname.includes('/api/') ||
+        u.pathname.includes('/v1/') ||
+        u.pathname.includes('/v2/') ||
+        u.pathname.includes('/v3/') ||
+        u.pathname.endsWith('.json')
+    } catch {
+      return false
+    }
+  }
+
+  function addEntry(entry: any) {
+    captured.unshift(entry)
+    if (captured.length > MAX_CAPTURED) captured.length = MAX_CAPTURED
+  }
+
+  const origFetch = window.fetch
+  window.fetch = function (input: any, init?: any) {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    const method = (init?.method || (typeof input !== 'string' && input.method) || 'GET').toUpperCase()
+    const headers: Record<string, string> = {}
+
+    if (init?.headers) {
+      if (init.headers instanceof Headers) {
+        init.headers.forEach((v: any, k: any) => { headers[k] = v })
+      } else if (Array.isArray(init.headers)) {
+        init.headers.forEach(([k, v]: any) => { headers[k] = v })
+      } else {
+        Object.entries(init.headers).forEach(([k, v]: any) => { headers[k] = String(v) })
+      }
+    }
+    if (typeof input !== 'string' && input.headers) {
+      if (input.headers instanceof Headers) {
+        input.headers.forEach((v: any, k: any) => { if (!headers[k]) headers[k] = v })
+      }
+    }
+
+    const body = init?.body ? String(init.body) : null
+
+    if (isApiUrl(url)) {
+      const entry: any = {
+        id: `fetch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        url, method, type: 'fetch', timestamp: Date.now(),
+        requestBody: body,
+        contentType: headers['Content-Type'] || headers['content-type'] || null,
+        headers: { ...headers },
+        status: null, tabId: -1,
+      }
+      addEntry(entry)
+      return origFetch.apply(this, arguments as any).then((response: any) => {
+        entry.status = response.status
+        return response
+      })
+    }
+
+    return origFetch.apply(this, arguments as any)
+  }
+
+  const origOpen = XMLHttpRequest.prototype.open
+  const origSend = XMLHttpRequest.prototype.send
+  const origSetHeader = XMLHttpRequest.prototype.setRequestHeader
+
+  XMLHttpRequest.prototype.open = function (method: string, url: string) {
+    ;(this as any).__dt = { method: (method || 'GET').toUpperCase(), url: String(url), headers: {} }
+    return origOpen.apply(this, arguments as any)
+  }
+
+  XMLHttpRequest.prototype.setRequestHeader = function (name: string, value: string) {
+    const dt = (this as any).__dt
+    if (dt) {
+      dt.headers[name] = value
+    }
+    return origSetHeader.apply(this, arguments as any)
+  }
+
+  XMLHttpRequest.prototype.send = function (body?: any) {
+    const dt = (this as any).__dt
+    if (dt && isApiUrl(dt.url)) {
+      const entry: any = {
+        id: `xhr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        url: dt.url, method: dt.method, type: 'xhr', timestamp: Date.now(),
+        requestBody: body ? String(body) : null,
+        contentType: dt.headers['Content-Type'] || dt.headers['content-type'] || null,
+        headers: { ...dt.headers },
+        status: null, tabId: -1,
+      }
+      addEntry(entry)
+      this.addEventListener('load', function () {
+        entry.status = (this as any).status
+      })
+    }
+    return origSend.apply(this, arguments as any)
+  }
+}
+
+export async function injectInterceptor(): Promise<void> {
+  if (typeof chrome === 'undefined' || !chrome.tabs || !chrome.scripting) return
+
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+  if (!tab?.id) return
+  if (tab.url?.startsWith('chrome://') || tab.url?.startsWith('edge://') || tab.url?.startsWith('about:')) return
+
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      world: 'MAIN',
+      func: interceptorFn,
+    })
+  } catch { /* ignore */ }
+}
+
 export async function getCapturedRequests(tabId: number): Promise<CapturedRequest[]> {
   if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) {
     throw new Error('此功能仅在浏览器扩展中可用')
   }
-  return new Promise((resolve, reject) => {
+
+  let interceptorData: CapturedRequest[] = []
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+    if (tab?.id && !tab.url?.startsWith('chrome://') && !tab.url?.startsWith('edge://')) {
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        world: 'MAIN',
+        func: () => (window as any).__devtoolkit_captured || [],
+      })
+      if (results && results[0]?.result) {
+        interceptorData = results[0].result as CapturedRequest[]
+      }
+    }
+  } catch { /* ignore */ }
+
+  const webRequestData = await new Promise<CapturedRequest[]>((resolve) => {
     chrome.runtime.sendMessage({ type: 'getCapturedRequests', tabId }, (response) => {
       if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message))
+        resolve([])
         return
       }
       resolve(response?.requests || [])
     })
   })
+
+  if (interceptorData.length === 0 && webRequestData.length === 0) {
+    return []
+  }
+
+  if (interceptorData.length > 0) {
+    const merged = new Map<string, CapturedRequest>()
+    for (const r of interceptorData) {
+      const key = `${r.method}:${r.url}`
+      merged.set(key, r)
+    }
+    for (const r of webRequestData) {
+      const key = `${r.method}:${r.url}`
+      if (!merged.has(key)) {
+        merged.set(key, r)
+      } else {
+        const existing = merged.get(key)!
+        if (!existing.requestBody && r.requestBody) existing.requestBody = r.requestBody
+        if (existing.status == null && r.status != null) existing.status = r.status
+      }
+    }
+    return Array.from(merged.values()).sort((a, b) => b.timestamp - a.timestamp)
+  }
+
+  return webRequestData
 }
 
 export async function clearCapturedRequests(tabId: number): Promise<void> {
   if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) return
   chrome.runtime.sendMessage({ type: 'clearCapturedRequests', tabId })
+
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+    if (tab?.id) {
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        world: 'MAIN',
+        func: () => { (window as any).__devtoolkit_captured = [] },
+      })
+    }
+  } catch { /* ignore */ }
 }
 
 export function requestToText(req: CapturedRequest): string {

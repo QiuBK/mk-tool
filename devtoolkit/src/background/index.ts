@@ -82,60 +82,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message.type === 'getCapturedRequests') {
     const tabId = message.tabId as number
-    const webRequests = capturedRequests.get(tabId) || []
-    chrome.scripting.executeScript({
-      target: { tabId },
-      world: 'MAIN',
-      func: () => {
-        return (window as any).__devtoolkit_captured || []
-      },
-    }, (results) => {
-      let interceptorRequests: any[] = []
-      if (results && results[0]?.result) {
-        interceptorRequests = results[0].result
-      }
-      const merged = new Map<string, typeof webRequests[0]>()
-
-      for (const r of webRequests) {
-        merged.set(r.id, r)
-      }
-      for (const r of interceptorRequests) {
-        if (!merged.has(r.id)) {
-          merged.set(r.id, r)
-        } else {
-          const existing = merged.get(r.id)!
-          if (Object.keys(r.headers).length > 0 && Object.keys(existing.headers).length === 0) {
-            existing.headers = r.headers
-          }
-          if (r.contentType && !existing.contentType) {
-            existing.contentType = r.contentType
-          }
-          if (r.status != null && existing.status == null) {
-            existing.status = r.status
-          }
-        }
-      }
-
-      const combined = Array.from(merged.values())
-      combined.sort((a, b) => b.timestamp - a.timestamp)
-      sendResponse({ requests: combined })
-    })
-    return true
+    const requests = capturedRequests.get(tabId) || []
+    sendResponse({ requests })
   }
 
   if (message.type === 'clearCapturedRequests') {
     const tabId = message.tabId as number
     capturedRequests.delete(tabId)
-    chrome.scripting.executeScript({
-      target: { tabId },
-      world: 'MAIN',
-      func: () => {
-        (window as any).__devtoolkit_captured = []
-      },
-    }, () => {
-      sendResponse({ ok: true })
-    })
-    return true
+    sendResponse({ ok: true })
   }
 
   return true
