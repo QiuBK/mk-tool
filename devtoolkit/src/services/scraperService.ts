@@ -223,10 +223,20 @@ function interceptorFn() {
         contentType: headers['Content-Type'] || headers['content-type'] || null,
         headers: { ...headers },
         status: null, tabId: -1,
+        responseHeaders: {},
+        responseBody: null,
       }
       addEntry(entry)
-      return origFetch.apply(this, arguments as any).then((response: any) => {
+      return origFetch.apply(this, arguments as any).then(async (response: any) => {
         entry.status = response.status
+        const respHeaders: Record<string, string> = {}
+        response.headers.forEach((v: any, k: any) => { respHeaders[k] = v })
+        entry.responseHeaders = respHeaders
+        try {
+          const cloned = response.clone()
+          const text = await cloned.text()
+          entry.responseBody = text.length > 50000 ? text.slice(0, 50000) : text
+        } catch { /* ignore */ }
         return response
       })
     }
@@ -261,10 +271,29 @@ function interceptorFn() {
         contentType: dt.headers['Content-Type'] || dt.headers['content-type'] || null,
         headers: { ...dt.headers },
         status: null, tabId: -1,
+        responseHeaders: {},
+        responseBody: null,
       }
       addEntry(entry)
       this.addEventListener('load', function () {
-        entry.status = (this as any).status
+        const xhr = this as any
+        entry.status = xhr.status
+        try {
+          const allHeaders = xhr.getAllResponseHeaders()
+          if (allHeaders) {
+            const respHeaders: Record<string, string> = {}
+            allHeaders.trim().split(/[\r\n]+/).forEach((line: string) => {
+              const parts = line.split(': ')
+              const key = parts.shift()
+              if (key) respHeaders[key] = parts.join(': ')
+            })
+            entry.responseHeaders = respHeaders
+          }
+        } catch { /* ignore */ }
+        try {
+          const text = xhr.responseText
+          entry.responseBody = text && text.length > 50000 ? text.slice(0, 50000) : text
+        } catch { /* ignore */ }
       })
     }
     return origSend.apply(this, arguments as any)
@@ -407,9 +436,13 @@ export function requestToText(req: CapturedRequest): string {
   if (req.status != null) lines.push(`Status: ${req.status}`)
   if (req.contentType) lines.push(`Content-Type: ${req.contentType}`)
   if (req.headers && Object.keys(req.headers).length > 0) {
-    lines.push(`Headers: ${JSON.stringify(req.headers, null, 2)}`)
+    lines.push(`Request Headers: ${JSON.stringify(req.headers, null, 2)}`)
   }
-  if (req.requestBody) lines.push(`Body: ${req.requestBody}`)
+  if (req.requestBody) lines.push(`Request Body: ${req.requestBody}`)
+  if (req.responseHeaders && Object.keys(req.responseHeaders).length > 0) {
+    lines.push(`Response Headers: ${JSON.stringify(req.responseHeaders, null, 2)}`)
+  }
+  if (req.responseBody) lines.push(`Response Body: ${req.responseBody}`)
   return lines.join('\n')
 }
 

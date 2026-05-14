@@ -142,6 +142,8 @@ export interface CapturedRequest {
   headers: Record<string, string>
   status: number | null
   tabId: number
+  responseHeaders: Record<string, string>
+  responseBody: string | null
 }
 
 export interface ReplayResponse {

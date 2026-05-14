@@ -339,7 +339,9 @@ export function ScraperTool() {
                             {selectedReq.status != null && (
                               <div className={styles.apiDetailRow}>
                                 <span className={styles.apiDetailLabel}>Status</span>
-                                <code className={styles.apiDetailValue}>{selectedReq.status}</code>
+                                <code className={`${styles.apiDetailValue} ${selectedReq.status < 400 ? styles.statusOk : styles.statusErr}`}>
+                                  {selectedReq.status}
+                                </code>
                               </div>
                             )}
                           </div>
@@ -368,6 +370,24 @@ export function ScraperTool() {
                                 <CopyButton text={selectedReq.requestBody} label="复制" />
                               </div>
                               <pre className={styles.apiDetailPre}>{tryFormatJson(selectedReq.requestBody)}</pre>
+                            </div>
+                          )}
+                          {Object.keys(selectedReq.responseHeaders || {}).length > 0 && (
+                            <div className={styles.apiDetailSection}>
+                              <div className={styles.apiDetailHeader}>
+                                <span>响应头</span>
+                                <CopyButton text={JSON.stringify(selectedReq.responseHeaders, null, 2)} label="复制" />
+                              </div>
+                              <pre className={styles.apiDetailPre}>{JSON.stringify(selectedReq.responseHeaders, null, 2)}</pre>
+                            </div>
+                          )}
+                          {selectedReq.responseBody && (
+                            <div className={styles.apiDetailSection}>
+                              <div className={styles.apiDetailHeader}>
+                                <span>响应体</span>
+                                <CopyButton text={selectedReq.responseBody} label="复制" />
+                              </div>
+                              <pre className={styles.apiDetailPre}>{tryFormatJson(selectedReq.responseBody)}</pre>
                             </div>
                           )}
                         </>

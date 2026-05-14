@@ -1,5 +1,5 @@
 let popupWindowId: number | null = null
-const capturedRequests: Map<number, { id: string; url: string; method: string; type: 'xhr' | 'fetch'; timestamp: number; requestBody: string | null; contentType: string | null; headers: Record<string, string>; status: number | null; tabId: number }[]> = new Map()
+const capturedRequests: Map<number, { id: string; url: string; method: string; type: 'xhr' | 'fetch'; timestamp: number; requestBody: string | null; contentType: string | null; headers: Record<string, string>; status: number | null; tabId: number; responseHeaders: Record<string, string>; responseBody: string | null }[]> = new Map()
 const MAX_CAPTURED = 200
 
 function applyMode(mode: string) {
@@ -140,6 +140,8 @@ chrome.webRequest.onBeforeRequest.addListener(
       headers: {} as Record<string, string>,
       status: null as number | null,
       tabId: details.tabId,
+      responseHeaders: {} as Record<string, string>,
+      responseBody: null as string | null,
     }
 
     if (!capturedRequests.has(details.tabId)) {
