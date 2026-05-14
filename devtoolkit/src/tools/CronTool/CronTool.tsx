@@ -29,7 +29,7 @@ export function CronTool() {
     if (parseResult.success) {
       setHumanReadable(parseResult.data.humanReadable)
       setFields(parseResult.data.fields)
-      const runsResult = cronNextRuns(expr, 5)
+      const runsResult = cronNextRuns(expr, 10)
       if (runsResult.success) setNextRuns(runsResult.data.nextRuns)
     } else {
       setError(parseResult.error.message)
@@ -45,7 +45,7 @@ export function CronTool() {
       setExpression(result.data.expression)
       setHumanReadable(result.data.humanReadable)
       setError('')
-      const runsResult = cronNextRuns(result.data.expression, 5)
+      const runsResult = cronNextRuns(result.data.expression, 10)
       if (runsResult.success) setNextRuns(runsResult.data.nextRuns)
       saveHistoryItem({ toolType: 'cron', input: result.data.expression, output: result.data.humanReadable })
     } else {
@@ -108,7 +108,7 @@ export function CronTool() {
       </div>
       {nextRuns.length > 0 && (
         <div className={styles.nextRuns}>
-          <label className={styles.label}>下次执行时间</label>
+          <label className={styles.label}>近10次执行时间</label>
           {nextRuns.map((run, i) => (
             <div key={i} className={styles.runItem}><code>{new Date(run).toLocaleString('zh-CN')}</code></div>
           ))}

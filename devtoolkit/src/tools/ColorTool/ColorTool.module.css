@@ -1,5 +1,12 @@
 .tool { display: flex; flex-direction: column; gap: 10px; }
 .row { display: flex; gap: 12px; }
+
+@media (max-width: 500px) {
+  .row {
+    flex-direction: column;
+    gap: 8px;
+  }
+}
 .section { flex: 1; display: flex; flex-direction: column; gap: 4px; }
 .label { font-size: 12px; font-weight: 600; color: var(--color-text-secondary); }
 .inputRow { display: flex; gap: 6px; }
@@ -11,6 +18,6 @@
 .error { color: var(--color-error); background: var(--color-error-bg); padding: 6px 10px; border-radius: var(--radius-sm); font-size: 12px; }
 .results { background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 10px; display: flex; flex-direction: column; gap: 6px; }
 .preview { height: 40px; border-radius: var(--radius-sm); border: 1px solid var(--color-border); }
-.resultRow { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.resultRow { display: flex; align-items: center; gap: 8px; font-size: 12px; flex-wrap: wrap; }
 .resultRow span { min-width: 32px; color: var(--color-text-secondary); font-weight: 500; }
 .resultRow code { font-family: var(--font-mono); font-size: 12px; flex: 1; }
