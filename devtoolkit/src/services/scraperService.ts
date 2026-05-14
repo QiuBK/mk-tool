@@ -5,30 +5,50 @@ function scrapePageFn() {
     const results: { headers: string[]; rows: string[][]; caption: string; source: 'table' }[] = []
     document.querySelectorAll('table').forEach((table) => {
       const caption = table.caption?.textContent?.trim() || ''
-      const headerCells = table.querySelectorAll('thead th, thead td')
+      const allRows = table.querySelectorAll('tr')
+      if (allRows.length === 0) return
+
       let headers: string[] = []
-      if (headerCells.length > 0) {
-        headers = Array.from(headerCells).map((cell) => cell.textContent?.trim() || '')
+      let headerRowIndex = -1
+
+      const theadRow = table.querySelector('thead tr')
+      if (theadRow) {
+        const cells = theadRow.querySelectorAll('th, td')
+        headers = Array.from(cells).map((cell) => cell.textContent?.trim() || '')
+        for (let i = 0; i < allRows.length; i++) {
+          if (allRows[i] === theadRow) { headerRowIndex = i; break }
+        }
       } else {
-        const firstRow = table.querySelector('tr')
-        if (firstRow) {
-          const cells = firstRow.querySelectorAll('th, td')
-          if (cells.length > 0 && firstRow.querySelector('th')) {
+        const firstRow = allRows[0]
+        const cells = firstRow.querySelectorAll('th, td')
+        if (cells.length > 0) {
+          const hasTh = firstRow.querySelector('th') != null
+          if (hasTh) {
             headers = Array.from(cells).map((cell) => cell.textContent?.trim() || '')
+            headerRowIndex = 0
           } else {
-            headers = Array.from(cells).map((_, i) => `列${i + 1}`)
+            const firstRowTexts = Array.from(cells).map((cell) => cell.textContent?.trim() || '')
+            const hasBold = Array.from(cells).some((cell) => {
+              const style = window.getComputedStyle(cell)
+              return parseInt(style.fontWeight) >= 700 || style.fontWeight === 'bold'
+            })
+            const hasStrong = Array.from(cells).some((cell) => cell.querySelector('strong, b, [style*="font-weight"]'))
+            if (hasBold || hasStrong) {
+              headers = firstRowTexts
+              headerRowIndex = 0
+            }
           }
         }
       }
+
       const rows: string[][] = []
-      const bodyRows = table.querySelectorAll('tbody tr')
-      const rowsToProcess = bodyRows.length > 0 ? bodyRows : table.querySelectorAll('tr')
-      rowsToProcess.forEach((row) => {
+      allRows.forEach((row, idx) => {
         if (row.parentElement?.tagName === 'THEAD') return
-        if (headers.length > 0 && row === table.querySelector('tr') && row.querySelector('th')) return
+        if (idx === headerRowIndex) return
         const cells = row.querySelectorAll('td, th')
         if (cells.length > 0) rows.push(Array.from(cells).map((cell) => cell.textContent?.trim() || ''))
       })
+
       if (rows.length > 0) results.push({ headers, rows, caption, source: 'table' })
     })
     return results
