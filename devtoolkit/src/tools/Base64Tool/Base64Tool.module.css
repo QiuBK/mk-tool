@@ -1,0 +1,10 @@
+.tool { display: flex; flex-direction: column; gap: 8px; height: 100%; }
+.section { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.label { font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 4px; }
+.textarea { flex: 1; min-height: 100px; resize: vertical; font-family: var(--font-mono); font-size: 12px; line-height: 1.5; padding: 8px; }
+.actions { display: flex; gap: 6px; }
+.actions button { background: var(--color-primary); color: var(--color-primary-text); padding: 6px 14px; font-size: 12px; }
+.actions button:hover:not(:disabled) { background: var(--color-primary-hover); }
+.actions button:disabled { opacity: 0.5; cursor: not-allowed; }
+.error { color: var(--color-error); background: var(--color-error-bg); padding: 6px 10px; border-radius: var(--radius-sm); font-size: 12px; }
+.outputHeader { display: flex; justify-content: space-between; align-items: center; }
