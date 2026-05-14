@@ -1,5 +1,7 @@
 let popupWindowId: number | null = null
 const capturedRequests: Map<number, { id: string; url: string; method: string; type: 'xhr' | 'fetch'; timestamp: number; requestBody: string | null; contentType: string | null; headers: Record<string, string>; status: number | null; tabId: number; responseHeaders: Record<string, string>; responseBody: string | null }[]> = new Map()
+const requestHeadersMap: Map<string, Record<string, string>> = new Map()
+const responseHeadersMap: Map<string, Record<string, string>> = new Map()
 const MAX_CAPTURED = 200
 
 function applyMode(mode: string) {
@@ -83,6 +85,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'getCapturedRequests') {
     const tabId = message.tabId as number
     const requests = capturedRequests.get(tabId) || []
+    for (const req of requests) {
+      if (Object.keys(req.headers).length === 0 && requestHeadersMap.has(req.id)) {
+        req.headers = requestHeadersMap.get(req.id)!
+      }
+      if (Object.keys(req.responseHeaders).length === 0 && responseHeadersMap.has(req.id)) {
+        req.responseHeaders = responseHeadersMap.get(req.id)!
+      }
+    }
     sendResponse({ requests })
   }
 
@@ -137,10 +147,10 @@ chrome.webRequest.onBeforeRequest.addListener(
       timestamp: details.timeStamp,
       requestBody,
       contentType: null as string | null,
-      headers: {} as Record<string, string>,
+      headers: requestHeadersMap.get(details.requestId) || {} as Record<string, string>,
       status: null as number | null,
       tabId: details.tabId,
-      responseHeaders: {} as Record<string, string>,
+      responseHeaders: responseHeadersMap.get(details.requestId) || {} as Record<string, string>,
       responseBody: null as string | null,
     }
 
@@ -155,41 +165,70 @@ chrome.webRequest.onBeforeRequest.addListener(
   ['requestBody']
 )
 
+chrome.webRequest.onBeforeSendHeaders.addListener(
+  (details) => {
+    if (!details.requestHeaders) return
+    const skipHeaders = new Set(['host', 'connection', 'content-length', 'accept-encoding'])
+    const headers: Record<string, string> = {}
+    details.requestHeaders.forEach((h) => {
+      const key = h.name.toLowerCase()
+      if (!skipHeaders.has(key) && h.value) {
+        headers[h.name] = h.value
+      }
+    })
+    requestHeadersMap.set(details.requestId, headers)
+
+    if (details.tabId >= 0) {
+      const list = capturedRequests.get(details.tabId)
+      if (list) {
+        const entry = list.find((r) => r.id === details.requestId)
+        if (entry) {
+          entry.headers = headers
+          const ct = details.requestHeaders.find((h) => h.name.toLowerCase() === 'content-type')
+          if (ct) entry.contentType = ct.value || null
+        }
+      }
+    }
+  },
+  { urls: ['<all_urls>'] },
+  ['requestHeaders', 'extraHeaders']
+)
+
+chrome.webRequest.onHeadersReceived.addListener(
+  (details) => {
+    if (!details.responseHeaders) return
+    const headers: Record<string, string> = {}
+    details.responseHeaders.forEach((h) => {
+      if (h.value) headers[h.name] = h.value
+    })
+    responseHeadersMap.set(details.requestId, headers)
+
+    if (details.tabId >= 0) {
+      const list = capturedRequests.get(details.tabId)
+      if (list) {
+        const entry = list.find((r) => r.id === details.requestId)
+        if (entry) {
+          entry.responseHeaders = headers
+          entry.status = details.statusCode
+        }
+      }
+    }
+  },
+  { urls: ['<all_urls>'] },
+  ['responseHeaders', 'extraHeaders']
+)
+
 chrome.webRequest.onCompleted.addListener(
   (details) => {
     if (details.tabId < 0) return
     const list = capturedRequests.get(details.tabId)
     if (!list) return
     const entry = list.find((r) => r.id === details.requestId)
-    if (entry) {
+    if (entry && entry.status == null) {
       entry.status = details.statusCode
     }
   },
   { urls: ['<all_urls>'] }
-)
-
-chrome.webRequest.onBeforeSendHeaders.addListener(
-  (details) => {
-    if (details.tabId < 0) return
-    const list = capturedRequests.get(details.tabId)
-    if (!list) return
-    const entry = list.find((r) => r.id === details.requestId)
-    if (entry && details.requestHeaders) {
-      const skipHeaders = new Set(['host', 'connection', 'content-length', 'accept-encoding'])
-      const headers: Record<string, string> = {}
-      details.requestHeaders.forEach((h) => {
-        const key = h.name.toLowerCase()
-        if (!skipHeaders.has(key) && h.value) {
-          headers[h.name] = h.value
-        }
-      })
-      entry.headers = headers
-      const ct = details.requestHeaders.find((h) => h.name.toLowerCase() === 'content-type')
-      if (ct) entry.contentType = ct.value || null
-    }
-  },
-  { urls: ['<all_urls>'] },
-  ['requestHeaders', 'extraHeaders']
 )
 
 chrome.tabs.onRemoved.addListener((tabId) => {
