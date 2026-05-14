@@ -377,6 +377,7 @@ export async function getCapturedRequests(tabId: number): Promise<CapturedReques
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
     if (tab?.id && !tab.url?.startsWith('chrome://') && !tab.url?.startsWith('edge://')) {
+      await injectInterceptor()
       const results = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         world: 'MAIN',
@@ -401,41 +402,23 @@ export async function getCapturedRequests(tabId: number): Promise<CapturedReques
     interceptorMap.set(`${r.method}:${r.url}`, r)
   }
 
-  const result: CapturedRequest[] = []
-  for (const wr of webRequestData) {
+  return webRequestData.map((wr) => {
     const key = `${wr.method}:${wr.url}`
     const ir = interceptorMap.get(key)
-    if (ir) {
-      const merged = { ...wr }
-      if (Object.keys(ir.headers || {}).length > Object.keys(merged.headers || {}).length) {
-        merged.headers = ir.headers
-      }
-      if (Object.keys(ir.responseHeaders || {}).length > Object.keys(merged.responseHeaders || {}).length) {
-        merged.responseHeaders = ir.responseHeaders
-      }
-      if (ir.responseBody && !merged.responseBody) {
-        merged.responseBody = ir.responseBody
-      }
-      if (ir.requestBody && !merged.requestBody) {
-        merged.requestBody = ir.requestBody
-      }
-      if (ir.contentType && !merged.contentType) {
-        merged.contentType = ir.contentType
-      }
-      result.push(merged)
-      interceptorMap.delete(key)
-    } else {
-      result.push(wr)
-    }
-  }
+    if (!ir) return wr
 
-  for (const ir of interceptorData) {
-    if (interceptorMap.has(`${ir.method}:${ir.url}`)) {
-      result.push(ir)
+    const merged = { ...wr }
+    if (!merged.responseBody && ir.responseBody) {
+      merged.responseBody = ir.responseBody
     }
-  }
-
-  return result.sort((a, b) => b.timestamp - a.timestamp)
+    if (Object.keys(merged.responseHeaders || {}).length === 0 && Object.keys(ir.responseHeaders || {}).length > 0) {
+      merged.responseHeaders = ir.responseHeaders
+    }
+    if (Object.keys(merged.headers || {}).length === 0 && Object.keys(ir.headers || {}).length > 0) {
+      merged.headers = ir.headers
+    }
+    return merged
+  })
 }
 
 export async function clearCapturedRequests(tabId: number): Promise<void> {
