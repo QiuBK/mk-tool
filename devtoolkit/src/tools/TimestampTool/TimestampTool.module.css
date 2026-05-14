@@ -1,0 +1,17 @@
+.tool { display: flex; flex-direction: column; gap: 12px; }
+.current { background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+.currentItem { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.currentLabel { min-width: 80px; color: var(--color-text-secondary); font-weight: 500; }
+.currentItem code { font-family: var(--font-mono); font-size: 12px; flex: 1; }
+.row { display: flex; gap: 12px; }
+.section { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.label { font-size: 12px; font-weight: 600; color: var(--color-text-secondary); }
+.inputRow { display: flex; gap: 6px; }
+.input { flex: 1; padding: 6px 8px; font-size: 12px; }
+.inputRow button { background: var(--color-primary); color: var(--color-primary-text); padding: 6px 14px; font-size: 12px; white-space: nowrap; }
+.inputRow button:disabled { opacity: 0.5; cursor: not-allowed; }
+.error { color: var(--color-error); background: var(--color-error-bg); padding: 6px 10px; border-radius: var(--radius-sm); font-size: 12px; }
+.result { background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+.resultRow { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.resultRow span { min-width: 80px; color: var(--color-text-secondary); }
+.resultRow code { font-family: var(--font-mono); font-size: 12px; flex: 1; }
