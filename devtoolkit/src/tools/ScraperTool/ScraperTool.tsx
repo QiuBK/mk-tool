@@ -627,11 +627,20 @@ function TableCard({ table, index }: { table: ScrapedTable; index: number }) {
 
   const handleSync = async () => {
     setSyncMsg('同步中...')
-    const result = await syncTableToPage(table.domId || '', headers, rows)
-    if (result.success) {
-      setSyncMsg('✅ 已同步到页面')
-    } else {
-      setSyncMsg(`❌ ${result.error}`)
+    try {
+      const result = await Promise.race([
+        syncTableToPage(table.domId || '', headers, rows),
+        new Promise<{ success: boolean; error?: string }>((resolve) =>
+          setTimeout(() => resolve({ success: false, error: '同步超时，请重试' }), 10000)
+        ),
+      ])
+      if (result.success) {
+        setSyncMsg('✅ 已同步到页面')
+      } else {
+        setSyncMsg(`❌ ${result.error}`)
+      }
+    } catch {
+      setSyncMsg('❌ 同步失败')
     }
     setTimeout(() => setSyncMsg(''), 3000)
   }
@@ -762,11 +771,20 @@ function ListCard({ list, index }: { list: ScrapedList; index: number }) {
 
   const handleSync = async () => {
     setSyncMsg('同步中...')
-    const result = await syncListToPage(list.domId || '', items)
-    if (result.success) {
-      setSyncMsg('✅ 已同步到页面')
-    } else {
-      setSyncMsg(`❌ ${result.error}`)
+    try {
+      const result = await Promise.race([
+        syncListToPage(list.domId || '', items),
+        new Promise<{ success: boolean; error?: string }>((resolve) =>
+          setTimeout(() => resolve({ success: false, error: '同步超时，请重试' }), 10000)
+        ),
+      ])
+      if (result.success) {
+        setSyncMsg('✅ 已同步到页面')
+      } else {
+        setSyncMsg(`❌ ${result.error}`)
+      }
+    } catch {
+      setSyncMsg('❌ 同步失败')
     }
     setTimeout(() => setSyncMsg(''), 3000)
   }
