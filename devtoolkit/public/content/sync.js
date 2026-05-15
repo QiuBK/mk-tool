@@ -8,69 +8,153 @@
   var itemsStr = el.getAttribute('data-items') || '[]';
   el.remove();
 
-  function simulateInput(inputEl, newValue) {
-    inputEl.focus();
-    inputEl.dispatchEvent(new Event('focus', { bubbles: true }));
+  function findReactFiber(dom) {
+    var keys = Object.keys(dom);
+    for (var i = 0; i < keys.length; i++) {
+      if (keys[i].indexOf('reactFiber') !== -1 || keys[i].indexOf('reactInternalInstance') !== -1) {
+        return dom[keys[i]];
+      }
+    }
+    return null;
+  }
 
-    if (inputEl.tagName === 'SELECT') {
+  function findReactOnChange(fiber) {
+    var current = fiber;
+    while (current) {
+      var props = current.memoizedProps || current.pendingProps;
+      if (props) {
+        if (typeof props.onChange === 'function') return props.onChange;
+        if (typeof props.onInput === 'function') return props.onInput;
+      }
+      current = current.return;
+    }
+    return null;
+  }
+
+  function setElementValue(el, val) {
+    el.focus();
+    el.dispatchEvent(new Event('focus', { bubbles: true }));
+
+    if (el.tagName === 'SELECT') {
       var found = false;
-      var opts = inputEl.options;
+      var opts = el.options;
       for (var i = 0; i < opts.length; i++) {
-        if (opts[i].textContent.trim() === newValue || opts[i].value === newValue) {
-          found = true;
-          break;
+        if (opts[i].textContent.trim() === val || opts[i].value === val) {
+          found = true; break;
         }
       }
       if (!found) {
         var o = document.createElement('option');
-        o.value = newValue;
-        o.textContent = newValue;
-        inputEl.appendChild(o);
+        o.value = val; o.textContent = val;
+        el.appendChild(o);
       }
       var setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
-      if (setter && setter.set) setter.set.call(inputEl, newValue);
-      else inputEl.value = newValue;
-      inputEl.dispatchEvent(new Event('input', { bubbles: true }));
-      inputEl.dispatchEvent(new Event('change', { bubbles: true }));
-    } else if (inputEl.tagName === 'TEXTAREA') {
-      inputEl.focus();
-      inputEl.select();
+      if (setter && setter.set) setter.set.call(el, val);
+      else el.value = val;
+
+      var fiber = findReactFiber(el);
+      if (fiber) {
+        var onChange = findReactOnChange(fiber);
+        if (onChange) {
+          try {
+            onChange({
+              target: el,
+              currentTarget: el,
+              type: 'change',
+              preventDefault: function() {},
+              stopPropagation: function() {},
+              persist: function() {},
+              nativeEvent: new Event('change'),
+            });
+          } catch(e) {}
+        }
+      }
+
+      if (el._valueTracker) el._valueTracker.setValue('');
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+
+    } else if (el.tagName === 'TEXTAREA') {
+      el.focus();
+      el.select();
       var ok = false;
-      try { ok = document.execCommand('selectAll', false, null); } catch(e) {}
-      try { ok = document.execCommand('insertText', false, newValue); } catch(e) {}
+      try { document.execCommand('selectAll'); } catch(e) {}
+      try { ok = document.execCommand('insertText', false, val); } catch(e) {}
       if (!ok) {
         var setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
-        if (setter && setter.set) setter.set.call(inputEl, newValue);
-        else inputEl.value = newValue;
-        inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+        if (setter && setter.set) setter.set.call(el, val);
+        else el.value = val;
+
+        var fiber = findReactFiber(el);
+        if (fiber) {
+          var onChange = findReactOnChange(fiber);
+          if (onChange) {
+            try {
+              onChange({
+                target: el,
+                currentTarget: el,
+                type: 'change',
+                preventDefault: function() {},
+                stopPropagation: function() {},
+                persist: function() {},
+                nativeEvent: new Event('change'),
+              });
+            } catch(e) {}
+          }
+        }
+
+        if (el._valueTracker) el._valueTracker.setValue('');
+        el.dispatchEvent(new Event('input', { bubbles: true }));
       }
+
     } else {
-      inputEl.focus();
+      el.focus();
       var nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
-      if (nativeSetter && nativeSetter.set) nativeSetter.set.call(inputEl, '');
-      else inputEl.value = '';
-      inputEl.dispatchEvent(new Event('input', { bubbles: true }));
-      inputEl.select();
+      if (nativeSetter && nativeSetter.set) nativeSetter.set.call(el, '');
+      else el.value = '';
+      if (el._valueTracker) el._valueTracker.setValue('');
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.select();
       var ok = false;
-      try { ok = document.execCommand('selectAll', false, null); } catch(e) {}
-      try { ok = document.execCommand('insertText', false, newValue); } catch(e) {}
+      try { document.execCommand('selectAll'); } catch(e) {}
+      try { ok = document.execCommand('insertText', false, val); } catch(e) {}
       if (!ok) {
-        if (nativeSetter && nativeSetter.set) nativeSetter.set.call(inputEl, newValue);
-        else inputEl.value = newValue;
-        inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+        if (nativeSetter && nativeSetter.set) nativeSetter.set.call(el, val);
+        else el.value = val;
+
+        var fiber = findReactFiber(el);
+        if (fiber) {
+          var onChange = findReactOnChange(fiber);
+          if (onChange) {
+            try {
+              onChange({
+                target: el,
+                currentTarget: el,
+                type: 'change',
+                preventDefault: function() {},
+                stopPropagation: function() {},
+                persist: function() {},
+                nativeEvent: new Event('change'),
+              });
+            } catch(e) {}
+          }
+        }
+
+        if (el._valueTracker) el._valueTracker.setValue('');
+        el.dispatchEvent(new Event('input', { bubbles: true }));
       }
     }
-    inputEl.dispatchEvent(new Event('change', { bubbles: true }));
-    inputEl.dispatchEvent(new Event('blur', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    el.dispatchEvent(new Event('blur', { bubbles: true }));
   }
 
   function setCellContent(cell, text) {
     var inputs = cell.querySelectorAll('input');
     var selects = cell.querySelectorAll('select');
     var textareas = cell.querySelectorAll('textarea');
-    if (inputs.length > 0) for (var i = 0; i < inputs.length; i++) simulateInput(inputs[i], text);
-    if (selects.length > 0) for (var i = 0; i < selects.length; i++) simulateInput(selects[i], text);
-    if (textareas.length > 0) for (var i = 0; i < textareas.length; i++) simulateInput(textareas[i], text);
+    if (inputs.length > 0) for (var i = 0; i < inputs.length; i++) setElementValue(inputs[i], text);
+    if (selects.length > 0) for (var i = 0; i < selects.length; i++) setElementValue(selects[i], text);
+    if (textareas.length > 0) for (var i = 0; i < textareas.length; i++) setElementValue(textareas[i], text);
     if (inputs.length === 0 && selects.length === 0 && textareas.length === 0) {
       cell.textContent = text;
     }
