@@ -22,5 +22,9 @@
   },
   "action": {
     "default_title": "DevToolKit"
-  }
+  },
+  "web_accessible_resources": [{
+    "resources": ["content/sync.js"],
+    "matches": ["<all_urls>"]
+  }]
 }
