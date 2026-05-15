@@ -162,6 +162,19 @@ export async function exportTableToExcel(table: ScrapedTable, fileName?: string)
   return name
 }
 
+export async function getActiveTabId(): Promise<number | null> {
+  if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) return null
+  return new Promise((resolve) => {
+    chrome.runtime.sendMessage({ type: 'getActiveTabId' }, (response) => {
+      if (chrome.runtime.lastError) {
+        resolve(null)
+        return
+      }
+      resolve(response?.tabId || null)
+    })
+  })
+}
+
 export async function startCapture(tabId: number): Promise<{ ok: boolean; error?: string }> {
   if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) {
     throw new Error('此功能仅在浏览器扩展中可用')

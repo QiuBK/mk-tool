@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { scrapeCurrentPage, tableToText, listToText, tableToCsv, exportTableToExcel, getCapturedRequests, clearCapturedRequests, requestToText, requestsToCsv, replayRequest, readPageAuth, startCapture, stopCapture, isDebuggerAttached } from '../../services/scraperService'
+import { scrapeCurrentPage, tableToText, listToText, tableToCsv, exportTableToExcel, getCapturedRequests, clearCapturedRequests, requestToText, requestsToCsv, replayRequest, readPageAuth, startCapture, stopCapture, isDebuggerAttached, getActiveTabId } from '../../services/scraperService'
 import { CopyButton } from '../../components/CopyButton/CopyButton'
 import type { ScrapeResult, ScrapedTable, ScrapedList, CapturedRequest, ReplayResponse } from '../../types'
 import styles from './ScraperTool.module.css'
@@ -40,14 +40,12 @@ export function ScraperTool() {
 
   const loadApiRequests = useCallback(async () => {
     try {
-      if (typeof chrome !== 'undefined' && chrome.tabs) {
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-        if (tab?.id) {
-          const attached = await isDebuggerAttached(tab.id)
-          setCapturing(attached)
-          const reqs = await getCapturedRequests(tab.id)
-          setApiRequests(reqs)
-        }
+      const tabId = await getActiveTabId()
+      if (tabId) {
+        const attached = await isDebuggerAttached(tabId)
+        setCapturing(attached)
+        const reqs = await getCapturedRequests(tabId)
+        setApiRequests(reqs)
       }
     } catch { /* ignore */ }
   }, [])
@@ -63,28 +61,24 @@ export function ScraperTool() {
   const handleStartCapture = async () => {
     setCaptureError('')
     try {
-      if (typeof chrome !== 'undefined' && chrome.tabs) {
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-        if (tab?.id) {
-          if (tab.url?.startsWith('chrome://') || tab.url?.startsWith('edge://') || tab.url?.startsWith('about:')) {
-            setCaptureError('无法在浏览器内部页面上抓包，请切换到普通网页')
-            return
-          }
-          const res = await startCapture(tab.id)
-          if (res.ok) {
-            setCapturing(true)
-            setActiveTab('api')
-          } else {
-            const errMsg = res.error || '无法开始抓包'
-            if (errMsg.includes('Cannot access') || errMsg.includes('permission')) {
-              setCaptureError('权限不足：请确保扩展有调试权限，且目标页面未打开 DevTools')
-            } else if (errMsg.includes('already attached')) {
-              setCapturing(true)
-              setActiveTab('api')
-            } else {
-              setCaptureError(`抓包启动失败：${errMsg}`)
-            }
-          }
+      const tabId = await getActiveTabId()
+      if (!tabId) {
+        setCaptureError('无法获取当前标签页，请确保已打开普通网页')
+        return
+      }
+      const res = await startCapture(tabId)
+      if (res.ok) {
+        setCapturing(true)
+        setActiveTab('api')
+      } else {
+        const errMsg = res.error || '无法开始抓包'
+        if (errMsg.includes('Cannot access') || errMsg.includes('permission')) {
+          setCaptureError('权限不足：请确保扩展有调试权限，且目标页面未打开 DevTools')
+        } else if (errMsg.includes('already attached')) {
+          setCapturing(true)
+          setActiveTab('api')
+        } else {
+          setCaptureError(`抓包启动失败：${errMsg}`)
         }
       }
     } catch (e) {
@@ -94,26 +88,22 @@ export function ScraperTool() {
 
   const handleStopCapture = async () => {
     try {
-      if (typeof chrome !== 'undefined' && chrome.tabs) {
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-        if (tab?.id) {
-          await stopCapture(tab.id)
-          setCapturing(false)
-        }
+      const tabId = await getActiveTabId()
+      if (tabId) {
+        await stopCapture(tabId)
+        setCapturing(false)
       }
     } catch { /* ignore */ }
   }
 
   const handleClearApi = async () => {
-    if (typeof chrome !== 'undefined' && chrome.tabs) {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-      if (tab?.id) {
-        await clearCapturedRequests(tab.id)
-        setApiRequests([])
-        setSelectedReq(null)
-        setEditMode(false)
-        setReplayResp(null)
-      }
+    const tabId = await getActiveTabId()
+    if (tabId) {
+      await clearCapturedRequests(tabId)
+      setApiRequests([])
+      setSelectedReq(null)
+      setEditMode(false)
+      setReplayResp(null)
     }
   }
 

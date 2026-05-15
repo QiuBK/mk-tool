@@ -44,6 +44,20 @@ function mergeHeaders(
   return target
 }
 
+function getActiveTabId(): Promise<number | null> {
+  return new Promise((resolve) => {
+    chrome.windows.getLastFocused({ windowTypes: ['normal'] }, (win) => {
+      if (!win.id) {
+        resolve(null)
+        return
+      }
+      chrome.tabs.query({ active: true, windowId: win.id }, (tabs) => {
+        resolve(tabs[0]?.id || null)
+      })
+    })
+  })
+}
+
 function applyMode(mode: string) {
   if (mode === 'sidepanel') {
     chrome.action.setPopup({ popup: '' })
@@ -117,14 +131,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         chrome.windows.remove(popupWindowId)
         popupWindowId = null
       }
-      chrome.windows.getLastFocused({ windowTypes: ['normal'] }, (win) => {
-        if (win.id) {
-          chrome.tabs.query({ active: true, windowId: win.id }, (tabs) => {
-            if (tabs[0]?.id) {
-              chrome.sidePanel.open({ tabId: tabs[0].id })
-            }
-          })
-        }
+      getActiveTabId().then((tabId) => {
+        if (tabId) chrome.sidePanel.open({ tabId })
       })
     }
     sendResponse({ ok: true })
@@ -133,6 +141,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message.type === 'startCapture') {
     const tabId = message.tabId as number
+    if (!tabId || tabId < 0) {
+      sendResponse({ ok: false, error: `无效的标签页ID: ${tabId}` })
+      return true
+    }
     chrome.debugger.attach({ tabId }, '1.3', () => {
       if (chrome.runtime.lastError) {
         const msg = chrome.runtime.lastError.message || ''
@@ -144,14 +156,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           })
           return
         }
-        sendResponse({ ok: false, error: msg })
+        sendResponse({ ok: false, error: `debugger.attach失败: ${msg}` })
         return
       }
       debuggerTabs.add(tabId)
       startKeepalive()
       chrome.debugger.sendCommand({ tabId }, 'Network.enable', {}, () => {
         if (chrome.runtime.lastError) {
-          sendResponse({ ok: false, error: chrome.runtime.lastError.message })
+          sendResponse({ ok: false, error: `Network.enable失败: ${chrome.runtime.lastError.message}` })
           return
         }
         sendResponse({ ok: true })
@@ -180,6 +192,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         debuggerTabs.delete(tabId)
       }
       sendResponse({ attached })
+    })
+    return true
+  }
+
+  if (message.type === 'getActiveTabId') {
+    getActiveTabId().then((tabId) => {
+      sendResponse({ tabId })
     })
     return true
   }
