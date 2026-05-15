@@ -240,115 +240,107 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       }
       chrome.scripting.executeScript({
         target: { tabId },
-        world: 'MAIN',
         func: (id: string, newHeaders: string[], newRows: string[][]) => {
-          const table = document.querySelector(`table[data-devtoolkit-id="${id}"]`) as HTMLTableElement | null
-          if (!table) return { ok: false, msg: `找不到标记为${id}的表格` }
+          const payload = JSON.stringify({ id, newHeaders, newRows })
+          const script = document.createElement('script')
+          script.textContent = `(function(){
+            var data = ${payload};
+            var table = document.querySelector('table[data-devtoolkit-id="' + data.id + '"]');
+            if (!table) return;
 
-          function setReactValue(el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement, value: string) {
-            const proto = Object.getPrototypeOf(el)
-            const descriptor = Object.getOwnPropertyDescriptor(proto, 'value')
-            if (descriptor && descriptor.set) {
-              descriptor.set.call(el, value)
-            } else {
-              el.value = value
-            }
-            el.dispatchEvent(new Event('input', { bubbles: true }))
-            el.dispatchEvent(new Event('change', { bubbles: true }))
-          }
-
-          function setCellContent(cell: Element, text: string) {
-            const inputs = cell.querySelectorAll('input')
-            const selects = cell.querySelectorAll('select')
-            const textareas = cell.querySelectorAll('textarea')
-            if (inputs.length > 0) {
-              inputs.forEach((input) => {
-                setReactValue(input, text)
-              })
-            }
-            if (selects.length > 0) {
-              selects.forEach((sel) => {
-                let found = false
-                const options = sel.querySelectorAll('option')
-                options.forEach((opt) => {
-                  if (opt.textContent?.trim() === text || opt.value === text) {
-                    opt.selected = true
-                    opt.setAttribute('selected', 'selected')
-                    found = true
+            function setInputValue(el, val) {
+              el.focus();
+              el.dispatchEvent(new Event('focus', {bubbles:true}));
+              if (el.tagName === 'SELECT') {
+                var found = false;
+                var opts = el.querySelectorAll('option');
+                opts.forEach(function(opt) {
+                  if (opt.textContent.trim() === val || opt.value === val) {
+                    opt.selected = true; opt.setAttribute('selected','selected'); found = true;
                   } else {
-                    opt.selected = false
-                    opt.removeAttribute('selected')
+                    opt.selected = false; opt.removeAttribute('selected');
                   }
-                })
+                });
                 if (!found) {
-                  const newOpt = document.createElement('option')
-                  newOpt.value = text
-                  newOpt.textContent = text
-                  newOpt.selected = true
-                  sel.appendChild(newOpt)
+                  var o = document.createElement('option');
+                  o.value = val; o.textContent = val; o.selected = true;
+                  el.appendChild(o);
                 }
-                setReactValue(sel, text)
-              })
-            }
-            if (textareas.length > 0) {
-              textareas.forEach((ta) => {
-                setReactValue(ta, text)
-              })
-            }
-            if (inputs.length === 0 && selects.length === 0 && textareas.length === 0) {
-              cell.textContent = text
-            }
-          }
-
-          if (newHeaders.length > 0) {
-            const headerCells = table.querySelectorAll('thead th, thead td')
-            newHeaders.forEach((text, i) => {
-              if (i < headerCells.length) setCellContent(headerCells[i], text)
-            })
-          }
-
-          let tbody = table.querySelector('tbody')
-          if (!tbody) {
-            tbody = document.createElement('tbody')
-            table.appendChild(tbody)
-          }
-          const existingRows = tbody.querySelectorAll(':scope > tr')
-          const colCount = newHeaders.length || (newRows[0]?.length || 1)
-
-          newRows.forEach((rowData, ri) => {
-            let tr: HTMLTableRowElement
-            if (ri < existingRows.length) {
-              tr = existingRows[ri] as HTMLTableRowElement
-            } else {
-              tr = document.createElement('tr')
-              for (let c = 0; c < colCount; c++) {
-                const td = document.createElement('td')
-                tr.appendChild(td)
+                var nativeSetter = Object.getOwnPropertyDescriptor(
+                  HTMLSelectElement.prototype, 'value'
+                );
+                if (nativeSetter && nativeSetter.set) {
+                  nativeSetter.set.call(el, val);
+                } else {
+                  el.value = val;
+                }
+              } else {
+                var nativeSetter = Object.getOwnPropertyDescriptor(
+                  el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, 'value'
+                );
+                if (nativeSetter && nativeSetter.set) {
+                  nativeSetter.set.call(el, val);
+                } else {
+                  el.value = val;
+                }
               }
-              tbody!.appendChild(tr)
+              el.dispatchEvent(new Event('input', {bubbles:true}));
+              el.dispatchEvent(new Event('change', {bubbles:true}));
+              el.dispatchEvent(new Event('blur', {bubbles:true}));
             }
-            const cells = tr.querySelectorAll('td, th')
-            rowData.forEach((text, ci) => {
-              if (ci < cells.length) {
-                setCellContent(cells[ci], text)
+
+            function setCellContent(cell, text) {
+              var inputs = cell.querySelectorAll('input');
+              var selects = cell.querySelectorAll('select');
+              var textareas = cell.querySelectorAll('textarea');
+              if (inputs.length > 0) inputs.forEach(function(el){ setInputValue(el, text); });
+              if (selects.length > 0) selects.forEach(function(el){ setInputValue(el, text); });
+              if (textareas.length > 0) textareas.forEach(function(el){ setInputValue(el, text); });
+              if (inputs.length === 0 && selects.length === 0 && textareas.length === 0) {
+                cell.textContent = text;
               }
-            })
-          })
+            }
 
-          for (let ri = existingRows.length - 1; ri >= newRows.length; ri--) {
-            existingRows[ri].remove()
-          }
+            if (data.newHeaders.length > 0) {
+              var hCells = table.querySelectorAll('thead th, thead td');
+              data.newHeaders.forEach(function(t, i) {
+                if (i < hCells.length) setCellContent(hCells[i], t);
+              });
+            }
 
-          return { ok: true }
+            var tbody = table.querySelector('tbody');
+            if (!tbody) { tbody = document.createElement('tbody'); table.appendChild(tbody); }
+            var existingRows = tbody.querySelectorAll(':scope > tr');
+            var colCount = data.newHeaders.length || (data.newRows[0] ? data.newRows[0].length : 1);
+
+            data.newRows.forEach(function(rowData, ri) {
+              var tr;
+              if (ri < existingRows.length) {
+                tr = existingRows[ri];
+              } else {
+                tr = document.createElement('tr');
+                for (var c = 0; c < colCount; c++) {
+                  var td = document.createElement('td');
+                  tr.appendChild(td);
+                }
+                tbody.appendChild(tr);
+              }
+              var cells = tr.querySelectorAll('td, th');
+              rowData.forEach(function(text, ci) {
+                if (ci < cells.length) setCellContent(cells[ci], text);
+              });
+            });
+
+            for (var ri = existingRows.length - 1; ri >= data.newRows.length; ri--) {
+              existingRows[ri].remove();
+            }
+          })();`
+          document.documentElement.appendChild(script)
+          script.remove()
         },
         args: [domId, headers, rows],
-      }).then((results) => {
-        const result = results?.[0]?.result as any
-        if (result && !result.ok) {
-          sendResponse({ success: false, error: result.msg })
-        } else {
-          sendResponse({ success: true })
-        }
+      }).then(() => {
+        sendResponse({ success: true })
       }).catch((e) => {
         sendResponse({ success: false, error: e.message || '脚本注入失败' })
       })
@@ -366,92 +358,89 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       }
       chrome.scripting.executeScript({
         target: { tabId },
-        world: 'MAIN',
         func: (id: string, newItems: string[]) => {
-          const list = document.querySelector(`ul[data-devtoolkit-id="${id}"], ol[data-devtoolkit-id="${id}"]`) as HTMLUListElement | HTMLOListElement | null
-          if (!list) return { ok: false, msg: `找不到标记为${id}的列表` }
+          const payload = JSON.stringify({ id, newItems })
+          const script = document.createElement('script')
+          script.textContent = `(function(){
+            var data = ${payload};
+            var list = document.querySelector('ul[data-devtoolkit-id="' + data.id + '"], ol[data-devtoolkit-id="' + data.id + '"]');
+            if (!list) return;
 
-          function setReactValue(el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement, value: string) {
-            const proto = Object.getPrototypeOf(el)
-            const descriptor = Object.getOwnPropertyDescriptor(proto, 'value')
-            if (descriptor && descriptor.set) {
-              descriptor.set.call(el, value)
-            } else {
-              el.value = value
-            }
-            el.dispatchEvent(new Event('input', { bubbles: true }))
-            el.dispatchEvent(new Event('change', { bubbles: true }))
-          }
-
-          function setItemContent(li: Element, text: string) {
-            const inputs = li.querySelectorAll('input')
-            const selects = li.querySelectorAll('select')
-            const textareas = li.querySelectorAll('textarea')
-            if (inputs.length > 0) {
-              inputs.forEach((input) => {
-                setReactValue(input, text)
-              })
-            }
-            if (selects.length > 0) {
-              selects.forEach((sel) => {
-                let found = false
-                const options = sel.querySelectorAll('option')
-                options.forEach((opt) => {
-                  if (opt.textContent?.trim() === text || opt.value === text) {
-                    opt.selected = true
-                    opt.setAttribute('selected', 'selected')
-                    found = true
+            function setInputValue(el, val) {
+              el.focus();
+              el.dispatchEvent(new Event('focus', {bubbles:true}));
+              if (el.tagName === 'SELECT') {
+                var found = false;
+                var opts = el.querySelectorAll('option');
+                opts.forEach(function(opt) {
+                  if (opt.textContent.trim() === val || opt.value === val) {
+                    opt.selected = true; opt.setAttribute('selected','selected'); found = true;
                   } else {
-                    opt.selected = false
-                    opt.removeAttribute('selected')
+                    opt.selected = false; opt.removeAttribute('selected');
                   }
-                })
+                });
                 if (!found) {
-                  const newOpt = document.createElement('option')
-                  newOpt.value = text
-                  newOpt.textContent = text
-                  newOpt.selected = true
-                  sel.appendChild(newOpt)
+                  var o = document.createElement('option');
+                  o.value = val; o.textContent = val; o.selected = true;
+                  el.appendChild(o);
                 }
-                setReactValue(sel, text)
-              })
+                var nativeSetter = Object.getOwnPropertyDescriptor(
+                  HTMLSelectElement.prototype, 'value'
+                );
+                if (nativeSetter && nativeSetter.set) {
+                  nativeSetter.set.call(el, val);
+                } else {
+                  el.value = val;
+                }
+              } else {
+                var nativeSetter = Object.getOwnPropertyDescriptor(
+                  el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, 'value'
+                );
+                if (nativeSetter && nativeSetter.set) {
+                  nativeSetter.set.call(el, val);
+                } else {
+                  el.value = val;
+                }
+              }
+              el.dispatchEvent(new Event('input', {bubbles:true}));
+              el.dispatchEvent(new Event('change', {bubbles:true}));
+              el.dispatchEvent(new Event('blur', {bubbles:true}));
             }
-            if (textareas.length > 0) {
-              textareas.forEach((ta) => {
-                setReactValue(ta, text)
-              })
+
+            function setItemContent(li, text) {
+              var inputs = li.querySelectorAll('input');
+              var selects = li.querySelectorAll('select');
+              var textareas = li.querySelectorAll('textarea');
+              if (inputs.length > 0) inputs.forEach(function(el){ setInputValue(el, text); });
+              if (selects.length > 0) selects.forEach(function(el){ setInputValue(el, text); });
+              if (textareas.length > 0) textareas.forEach(function(el){ setInputValue(el, text); });
+              if (inputs.length === 0 && selects.length === 0 && textareas.length === 0) {
+                li.textContent = text;
+              }
             }
-            if (inputs.length === 0 && selects.length === 0 && textareas.length === 0) {
-              li.textContent = text
+
+            var existingItems = list.querySelectorAll(':scope > li');
+
+            data.newItems.forEach(function(text, i) {
+              if (i < existingItems.length) {
+                setItemContent(existingItems[i], text);
+              } else {
+                var li = document.createElement('li');
+                li.textContent = text;
+                list.appendChild(li);
+              }
+            });
+
+            for (var i = existingItems.length - 1; i >= data.newItems.length; i--) {
+              existingItems[i].remove();
             }
-          }
-
-          const existingItems = list.querySelectorAll(':scope > li')
-
-          newItems.forEach((text, i) => {
-            if (i < existingItems.length) {
-              setItemContent(existingItems[i], text)
-            } else {
-              const li = document.createElement('li')
-              li.textContent = text
-              list.appendChild(li)
-            }
-          })
-
-          for (let i = existingItems.length - 1; i >= newItems.length; i--) {
-            existingItems[i].remove()
-          }
-
-          return { ok: true }
+          })();`
+          document.documentElement.appendChild(script)
+          script.remove()
         },
         args: [domId, items],
-      }).then((results) => {
-        const result = results?.[0]?.result as any
-        if (result && !result.ok) {
-          sendResponse({ success: false, error: result.msg })
-        } else {
-          sendResponse({ success: true })
-        }
+      }).then(() => {
+        sendResponse({ success: true })
       }).catch((e) => {
         sendResponse({ success: false, error: e.message || '脚本注入失败' })
       })
