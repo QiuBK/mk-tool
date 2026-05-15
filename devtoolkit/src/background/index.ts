@@ -240,6 +240,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       }
       chrome.scripting.executeScript({
         target: { tabId },
+        world: 'MAIN',
         func: (id: string, newHeaders: string[], newRows: string[][]) => {
           const table = document.querySelector(`table[data-devtoolkit-id="${id}"]`) as HTMLTableElement | null
           if (!table) return { ok: false, msg: `找不到标记为${id}的表格` }
@@ -365,6 +366,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       }
       chrome.scripting.executeScript({
         target: { tabId },
+        world: 'MAIN',
         func: (id: string, newItems: string[]) => {
           const list = document.querySelector(`ul[data-devtoolkit-id="${id}"], ol[data-devtoolkit-id="${id}"]`) as HTMLUListElement | HTMLOListElement | null
           if (!list) return { ok: false, msg: `找不到标记为${id}的列表` }
