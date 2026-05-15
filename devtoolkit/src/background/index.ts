@@ -289,19 +289,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         return { success: false, error: val.err || '同步失败' }
       } else if (val && val.ok === true && val.diag) {
         const d = val.diag
-        let info = `修改:${d.modified}项`
-        if (d.paths.length > 0) info += ` [${d.paths.slice(0, 3).join(',')}]`
-        const stores = d.allStores
-        const storeNames = Object.keys(stores)
-        for (const sn of storeNames) {
-          const s = stores[sn]
-          const arrKeys = Object.keys(s).filter(k => typeof s[k] === 'string' && s[k].startsWith('Array('))
-          if (arrKeys.length > 0) {
-            info += ` ${sn}:`
-            for (const ak of arrKeys) {
-              info += `${ak}=${s[ak]}`
-              if (s[ak + '_keys']) info += `[${s[ak + '_keys'].join(',')}]`
-              if (s[ak + '_sample']) info += `sample:${JSON.stringify(s[ak + '_sample']).substring(0, 80)}`
+        let info = `修改:${d.modified}项 组件:${d.compCount}个`
+        if (d.paths.length > 0) info += ` [${d.paths.slice(0, 5).join(',')}]`
+        if (d.compSamples.length > 0) {
+          for (const cs of d.compSamples) {
+            const arrKeys = Object.keys(cs).filter(k => typeof cs[k] === 'string' && cs[k].startsWith('Array('))
+            if (arrKeys.length > 0) {
+              info += ` ${cs.source}:${arrKeys[0]}=${cs[arrKeys[0]]}`
+              if (cs[arrKeys[0] + '_keys']) info += `[${cs[arrKeys[0] + '_keys'].join(',')}]`
             }
           }
         }

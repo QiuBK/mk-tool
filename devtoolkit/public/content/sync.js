@@ -8,7 +8,7 @@
   var itemsStr = el.getAttribute('data-items') || '[]';
   el.remove();
 
-  var diag = { type: type, id: id, foundElement: false, modified: 0, paths: [], allStores: {} };
+  var diag = { type: type, id: id, foundElement: false, modified: 0, paths: [], compCount: 0, compSamples: [] };
 
   function findVue3App() {
     var appEl = document.getElementById('app');
@@ -22,109 +22,134 @@
 
   var appResult = findVue3App();
 
-  function inspectStore(store, storeName) {
-    var info = { name: storeName };
-    var state = null;
-    try { state = store.$state; } catch(e) { info.stateError = e.message; }
-    if (!state) { info.noState = true; return info; }
-    var stateKeys;
-    try { stateKeys = Object.getOwnPropertyNames(state); } catch(e) { stateKeys = Object.keys(state); }
-    info.stateKeys = stateKeys.slice(0, 20);
-    for (var i = 0; i < Math.min(stateKeys.length, 10); i++) {
-      var key = stateKeys[i];
-      if (key.startsWith('_') || key.startsWith('$')) continue;
-      try {
-        var val = state[key];
-        if (Array.isArray(val)) {
-          info[key] = 'Array(' + val.length + ')';
-          if (val.length > 0 && typeof val[0] === 'object') {
-            info[key + '_keys'] = Object.keys(val[0]).slice(0, 10);
-            if (val.length > 0) {
-              var sample = {};
-              var objKeys = Object.keys(val[0]).slice(0, 6);
-              for (var j = 0; j < objKeys.length; j++) {
-                try { sample[objKeys[j]] = typeof val[0][objKeys[j]] + ':' + String(val[0][objKeys[j]]).substring(0, 25); } catch(e) {}
-              }
-              info[key + '_sample'] = sample;
-            }
-          } else if (val.length > 0) {
-            info[key + '_first'] = typeof val[0] + ':' + String(val[0]).substring(0, 25);
-          }
-        } else if (typeof val === 'object' && val !== null) {
-          var subKeys;
-          try { subKeys = Object.getOwnPropertyNames(val); } catch(e) { subKeys = Object.keys(val); }
-          info[key] = 'Object(' + subKeys.length + ') keys:[' + subKeys.slice(0, 8).join(',') + ']';
-        } else {
-          info[key] = typeof val + ':' + String(val).substring(0, 30);
-        }
-      } catch(e) { info[key] = 'error:' + e.message; }
-    }
-    return info;
-  }
-
-  function collectAllStoreInfo() {
-    if (!appResult) return;
-    try {
-      var pinia = appResult.app.config.globalProperties.$pinia;
-      if (!pinia || !pinia._s) return;
-      pinia._s.forEach(function(store, storeName) {
-        diag.allStores[storeName] = inspectStore(store, storeName);
-      });
-    } catch(e) { diag.piniaError = e.message; }
-  }
-
   function deepSearchAndModify(obj, oldVal, newVal, path, depth) {
-    if (!obj || typeof obj !== 'object' || depth > 8) return false;
+    if (!obj || typeof obj !== 'object' || depth > 10) return false;
+    var found = false;
     try {
       var keys;
       try { keys = Object.getOwnPropertyNames(obj); } catch(e) { keys = Object.keys(obj); }
       for (var i = 0; i < keys.length; i++) {
         var key = keys[i];
-        if (key.startsWith('_') || key.startsWith('$') || key === 'constructor' || key === 'prototype' || key === '__proto__') continue;
+        if (key.startsWith('_') || key.startsWith('$') || key === 'constructor' || key === 'prototype' || key === '__proto__' || key === 'toJSON' || key === 'toString' || key === 'valueOf') continue;
         try {
           var cur = obj[key];
+          if (cur === undefined || cur === null || typeof cur === 'function') continue;
           if (cur === oldVal || (typeof cur === 'number' && cur === Number(oldVal)) || (typeof cur !== 'object' && String(cur) === String(oldVal))) {
             var setVal = (typeof cur === 'number') ? Number(newVal) : newVal;
             try { obj[key] = setVal; } catch(e) {}
             diag.modified++;
             diag.paths.push(path + '.' + key + '=' + oldVal + '->' + newVal);
-            return true;
+            found = true;
+            continue;
           }
           if (Array.isArray(cur)) {
             for (var ri = 0; ri < cur.length; ri++) {
               if (typeof cur[ri] === 'object' && cur[ri] !== null) {
-                if (deepSearchAndModify(cur[ri], oldVal, newVal, path + '.' + key + '[' + ri + ']', depth + 1)) return true;
-              } else if (cur[ri] === oldVal || (typeof cur[ri] === 'number' && cur[ri] === Number(oldVal)) || (typeof cur[ri] !== 'object' && String(cur[ri]) === String(oldVal))) {
+                if (deepSearchAndModify(cur[ri], oldVal, newVal, path + '.' + key + '[' + ri + ']', depth + 1)) found = true;
+              } else if (cur[ri] !== null && cur[ri] !== undefined && (cur[ri] === oldVal || (typeof cur[ri] === 'number' && cur[ri] === Number(oldVal)) || (typeof cur[ri] !== 'object' && String(cur[ri]) === String(oldVal)))) {
                 var setVal2 = (typeof cur[ri] === 'number') ? Number(newVal) : newVal;
                 cur[ri] = setVal2;
                 diag.modified++;
                 diag.paths.push(path + '.' + key + '[' + ri + ']=' + oldVal + '->' + newVal);
-                return true;
+                found = true;
               }
             }
-          } else if (typeof cur === 'object' && cur !== null && !Array.isArray(cur)) {
-            if (deepSearchAndModify(cur, oldVal, newVal, path + '.' + key, depth + 1)) return true;
+          } else if (typeof cur === 'object' && cur !== null && !(cur instanceof HTMLElement) && !(cur instanceof Node)) {
+            if (deepSearchAndModify(cur, oldVal, newVal, path + '.' + key, depth + 1)) found = true;
           }
         } catch(e) {}
       }
     } catch(e) {}
-    return false;
+    return found;
   }
 
-  function searchAllPiniaStores(oldVal, newVal) {
-    if (!appResult) return;
-    try {
-      var pinia = appResult.app.config.globalProperties.$pinia;
-      if (!pinia || !pinia._s) return;
-      pinia._s.forEach(function(store, storeName) {
-        if (diag.modified > 0) return;
-        var state = null;
-        try { state = store.$state; } catch(e) {}
-        if (state) {
-          if (deepSearchAndModify(state, oldVal, newVal, storeName + '.$state', 0)) return;
+  function collectAllComponents(instance, depth, result) {
+    if (!instance || depth > 25) return;
+    result.push(instance);
+    var subTree = instance.subTree;
+    if (!subTree) return;
+    if (subTree.component) collectAllComponents(subTree.component, depth + 1, result);
+    if (Array.isArray(subTree.children)) {
+      for (var i = 0; i < subTree.children.length; i++) {
+        if (subTree.children[i] && subTree.children[i].component) {
+          collectAllComponents(subTree.children[i].component, depth + 1, result);
         }
-        try { if (deepSearchAndModify(store, oldVal, newVal, storeName, 0)) return; } catch(e) {}
-      });
+      }
+    }
+    if (subTree.dynamicChildren) {
+      for (var i = 0; i < subTree.dynamicChildren.length; i++) {
+        if (subTree.dynamicChildren[i] && subTree.dynamicChildren[i].component) {
+          collectAllComponents(subTree.dynamicChildren[i].component, depth + 1, result);
+        }
+      }
+    }
+  }
+
+  function searchComponentTree(oldVal, newVal) {
+    if (!appResult) return;
+    var app = appResult.app;
+    var rootComp = null;
+    try {
+      if (app._instance) rootComp = app._instance;
+      else if (app._container && app._container._vnode && app._container._vnode.component) rootComp = app._container._vnode.component;
+    } catch(e) {}
+
+    if (!rootComp) {
+      try {
+        var pinia = app.config.globalProperties.$pinia;
+        if (pinia && pinia._s) {
+          pinia._s.forEach(function(store) {
+            try {
+              var state = store.$state;
+              if (state) deepSearchAndModify(state, oldVal, newVal, 'pinia.$state', 0);
+            } catch(e) {}
+          });
+        }
+      } catch(e) {}
+      return;
+    }
+
+    var allComponents = [];
+    collectAllComponents(rootComp, 0, allComponents);
+    diag.compCount = allComponents.length;
+
+    for (var ci = 0; ci < allComponents.length; ci++) {
+      var comp = allComponents[ci];
+      var proxy = comp.proxy;
+      var dataSources = [];
+      try { if (comp.setupState) dataSources.push({ name: 'setupState', data: comp.setupState }); } catch(e) {}
+      try { if (proxy && proxy.$data) dataSources.push({ name: '$data', data: proxy.$data }); } catch(e) {}
+
+      if (diag.compSamples.length < 3 && dataSources.length > 0) {
+        var ds = dataSources[0];
+        var sample = { source: ds.name, keys: Object.keys(ds.data).slice(0, 10) };
+        for (var si = 0; si < Math.min(sample.keys.length, 3); si++) {
+          try {
+            var sv = ds.data[sample.keys[si]];
+            if (Array.isArray(sv)) {
+              sample[sample.keys[si]] = 'Array(' + sv.length + ')';
+              if (sv.length > 0 && typeof sv[0] === 'object') sample[sample.keys[si] + '_keys'] = Object.keys(sv[0]).slice(0, 6);
+            } else sample[sample.keys[si]] = typeof sv + ':' + String(sv).substring(0, 20);
+          } catch(e) {}
+        }
+        diag.compSamples.push(sample);
+      }
+
+      for (var di = 0; di < dataSources.length; di++) {
+        deepSearchAndModify(dataSources[di].data, oldVal, newVal, 'comp.' + dataSources[di].name, 0);
+      }
+    }
+
+    try {
+      var pinia = app.config.globalProperties.$pinia;
+      if (pinia && pinia._s) {
+        pinia._s.forEach(function(store) {
+          try {
+            var state = store.$state;
+            if (state) deepSearchAndModify(state, oldVal, newVal, 'pinia.$state', 0);
+          } catch(e) {}
+        });
+      }
     } catch(e) {}
   }
 
@@ -163,11 +188,9 @@
       var oldText = cell.textContent.trim();
       if (spans.length > 0) { for (var i = 0; i < spans.length; i++) { if (spans[i].textContent.trim() === oldText) spans[i].textContent = text; } }
       else { cell.textContent = text; }
-      searchAllPiniaStores(oldText, text);
+      searchComponentTree(oldText, text);
     }
   }
-
-  collectAllStoreInfo();
 
   if (type === 'table') {
     var newHeaders = JSON.parse(headersStr);
