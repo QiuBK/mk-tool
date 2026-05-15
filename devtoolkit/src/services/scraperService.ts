@@ -162,6 +162,88 @@ export async function exportTableToExcel(table: ScrapedTable, fileName?: string)
   return name
 }
 
+export async function syncTableToPage(tableIndex: number, headers: string[], rows: string[][]): Promise<void> {
+  if (typeof chrome === 'undefined' || !chrome.tabs || !chrome.scripting) return
+
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+  if (!tab?.id) return
+  if (tab.url?.startsWith('chrome://') || tab.url?.startsWith('edge://') || tab.url?.startsWith('about:')) return
+
+  await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    world: 'MAIN',
+    func: (idx: number, newHeaders: string[], newRows: string[][]) => {
+      const tables = document.querySelectorAll('table')
+      if (idx >= tables.length) return
+      const table = tables[idx]
+
+      if (newHeaders.length > 0) {
+        let thead = table.querySelector('thead')
+        if (!thead) {
+          thead = document.createElement('thead')
+          table.insertBefore(thead, table.firstChild)
+        }
+        let headerRow = thead.querySelector('tr')
+        if (!headerRow) {
+          headerRow = document.createElement('tr')
+          thead.appendChild(headerRow)
+        }
+        const headerCells = headerRow.querySelectorAll('th, td')
+        newHeaders.forEach((text, i) => {
+          if (i < headerCells.length) {
+            headerCells[i].textContent = text
+          }
+        })
+      }
+
+      const bodyRows = table.querySelectorAll('tbody tr')
+      newRows.forEach((rowData, ri) => {
+        if (ri < bodyRows.length) {
+          const cells = bodyRows[ri].querySelectorAll('td, th')
+          rowData.forEach((text, ci) => {
+            if (ci < cells.length) {
+              cells[ci].textContent = text
+            }
+          })
+        }
+      })
+    },
+    args: [tableIndex, headers, rows],
+  })
+}
+
+export async function syncListToPage(listIndex: number, items: string[]): Promise<void> {
+  if (typeof chrome === 'undefined' || !chrome.tabs || !chrome.scripting) return
+
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+  if (!tab?.id) return
+  if (tab.url?.startsWith('chrome://') || tab.url?.startsWith('edge://') || tab.url?.startsWith('about:')) return
+
+  await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    world: 'MAIN',
+    func: (idx: number, newItems: string[]) => {
+      const lists = document.querySelectorAll('ul, ol')
+      const visibleLists: Element[] = []
+      lists.forEach((list) => {
+        if (list.closest('table, nav, header, footer, [role="navigation"]')) return
+        if (list.closest('ul, ol') && list.parentElement?.closest('ul, ol')) return
+        visibleLists.push(list)
+      })
+      if (idx >= visibleLists.length) return
+      const list = visibleLists[idx]
+
+      const listItems = list.querySelectorAll(':scope > li')
+      newItems.forEach((text, i) => {
+        if (i < listItems.length) {
+          listItems[i].textContent = text
+        }
+      })
+    },
+    args: [listIndex, items],
+  })
+}
+
 export async function getActiveTabId(): Promise<number | null> {
   if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) return null
   return new Promise((resolve) => {

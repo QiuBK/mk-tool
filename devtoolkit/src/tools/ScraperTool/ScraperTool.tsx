@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { scrapeCurrentPage, tableToText, listToText, tableToCsv, exportTableToExcel, getCapturedRequests, clearCapturedRequests, requestToText, requestsToCsv, replayRequest, readPageAuth, startCapture, stopCapture, isDebuggerAttached, getActiveTabId } from '../../services/scraperService'
+import { scrapeCurrentPage, tableToText, listToText, tableToCsv, exportTableToExcel, getCapturedRequests, clearCapturedRequests, requestToText, requestsToCsv, replayRequest, readPageAuth, startCapture, stopCapture, isDebuggerAttached, getActiveTabId, syncTableToPage, syncListToPage } from '../../services/scraperService'
 import { CopyButton } from '../../components/CopyButton/CopyButton'
 import type { ScrapeResult, ScrapedTable, ScrapedList, CapturedRequest, ReplayResponse } from '../../types'
 import styles from './ScraperTool.module.css'
@@ -639,6 +639,7 @@ function TableCard({ table, index }: { table: ScrapedTable; index: number }) {
     setRows(prev => {
       const next = prev.map(r => [...r])
       next[rowIdx][colIdx] = value
+      syncTableToPage(index, headers, next)
       return next
     })
   }
@@ -647,12 +648,17 @@ function TableCard({ table, index }: { table: ScrapedTable; index: number }) {
     setHeaders(prev => {
       const next = [...prev]
       next[colIdx] = value
+      syncTableToPage(index, next, rows)
       return next
     })
   }
 
   const handleDeleteRow = (rowIdx: number) => {
-    setRows(prev => prev.filter((_, i) => i !== rowIdx))
+    setRows(prev => {
+      const next = prev.filter((_, i) => i !== rowIdx)
+      syncTableToPage(index, headers, next)
+      return next
+    })
   }
 
   const handleAddRow = () => {
@@ -676,6 +682,9 @@ function TableCard({ table, index }: { table: ScrapedTable; index: number }) {
           <button className={styles.smallBtn} onClick={handleExportExcel}>Excel</button>
         </div>
       </div>
+      {editing && (
+        <div className={styles.syncHint}>📝 编辑模式下修改会实时同步到页面</div>
+      )}
       <div className={styles.tableWrap}>
         <table className={styles.dataTable}>
           {headers.length > 0 && (
@@ -744,12 +753,17 @@ function ListCard({ list, index }: { list: ScrapedList; index: number }) {
     setItems(prev => {
       const next = [...prev]
       next[idx] = value
+      syncListToPage(index, next)
       return next
     })
   }
 
   const handleDeleteItem = (idx: number) => {
-    setItems(prev => prev.filter((_, i) => i !== idx))
+    setItems(prev => {
+      const next = prev.filter((_, i) => i !== idx)
+      syncListToPage(index, next)
+      return next
+    })
   }
 
   const handleAddItem = () => {
@@ -770,6 +784,9 @@ function ListCard({ list, index }: { list: ScrapedList; index: number }) {
           <CopyButton text={listToText(currentList)} label="复制" />
         </div>
       </div>
+      {editing && (
+        <div className={styles.syncHint}>📝 编辑模式下修改会实时同步到页面</div>
+      )}
       <ol className={styles.listItems}>
         {items.map((item, i) => (
           <li key={i} className={styles.listItemEdit}>
