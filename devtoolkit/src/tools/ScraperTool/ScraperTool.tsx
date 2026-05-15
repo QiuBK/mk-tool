@@ -630,12 +630,12 @@ function TableCard({ table, index }: { table: ScrapedTable; index: number }) {
     try {
       const result = await Promise.race([
         syncTableToPage(table.domId || '', headers, rows),
-        new Promise<{ success: boolean; error?: string }>((resolve) =>
+        new Promise<{ success: boolean; error?: string; info?: string }>((resolve) =>
           setTimeout(() => resolve({ success: false, error: '同步超时，请重试' }), 10000)
         ),
       ])
       if (result.success) {
-        setSyncMsg('✅ 已同步到页面')
+        setSyncMsg(`✅ 已同步到页面${result.info ? ' (' + result.info + ')' : ''}`)
       } else {
         setSyncMsg(`❌ ${result.error}`)
       }
@@ -774,12 +774,12 @@ function ListCard({ list, index }: { list: ScrapedList; index: number }) {
     try {
       const result = await Promise.race([
         syncListToPage(list.domId || '', items),
-        new Promise<{ success: boolean; error?: string }>((resolve) =>
+        new Promise<{ success: boolean; error?: string; info?: string }>((resolve) =>
           setTimeout(() => resolve({ success: false, error: '同步超时，请重试' }), 10000)
         ),
       ])
       if (result.success) {
-        setSyncMsg('✅ 已同步到页面')
+        setSyncMsg(`✅ 已同步到页面${result.info ? ' (' + result.info + ')' : ''}`)
       } else {
         setSyncMsg(`❌ ${result.error}`)
       }

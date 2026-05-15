@@ -238,24 +238,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         sendResponse({ success: false, error: '无法获取标签页' })
         return
       }
+      const wasAttached = debuggerTabs.has(tabId)
       try {
-        await chrome.scripting.executeScript({
-          target: { tabId },
-          func: (syncId: string, hdrJson: string, rowsJson: string) => {
-            var existing = document.getElementById('__devtoolkit_sync__')
-            if (existing) existing.remove()
-            var el = document.createElement('devtoolkit-sync')
-            el.id = '__devtoolkit_sync__'
-            el.style.display = 'none'
-            el.setAttribute('data-type', 'table')
-            el.setAttribute('data-id', syncId)
-            el.setAttribute('data-headers', hdrJson)
-            el.setAttribute('data-rows', rowsJson)
-            document.body.appendChild(el)
-          },
-          args: [domId, JSON.stringify(headers), JSON.stringify(rows)],
-        })
-        const wasAttached = debuggerTabs.has(tabId)
         if (!wasAttached) {
           await new Promise<void>((resolve, reject) => {
             chrome.debugger.attach({ tabId }, '1.3', () => {
@@ -267,14 +251,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             })
           })
         }
-        const syncJs = `(function(){var el=document.getElementById('__devtoolkit_sync__');if(!el)return;var type=el.getAttribute('data-type');var id=el.getAttribute('data-id')||'';var headersStr=el.getAttribute('data-headers')||'[]';var rowsStr=el.getAttribute('data-rows')||'[]';var itemsStr=el.getAttribute('data-items')||'[]';el.remove();function findReactFiber(dom){var keys=Object.keys(dom);for(var i=0;i<keys.length;i++){if(keys[i].indexOf('reactFiber')!==-1||keys[i].indexOf('reactInternalInstance')!==-1){return dom[keys[i]];}}return null;}function findReactOnChange(fiber){var current=fiber;while(current){var props=current.memoizedProps||current.pendingProps;if(props){if(typeof props.onChange==='function')return props.onChange;if(typeof props.onInput==='function')return props.onInput;}current=current.return;}return null;}function setElementValue(el,val){el.focus();el.dispatchEvent(new Event('focus',{bubbles:true}));if(el.tagName==='SELECT'){var found=false;var opts=el.options;for(var i=0;i<opts.length;i++){if(opts[i].textContent.trim()===val||opts[i].value===val){found=true;break;}}if(!found){var o=document.createElement('option');o.value=val;o.textContent=val;el.appendChild(o);}var setter=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value');if(setter&&setter.set)setter.set.call(el,val);else el.value=val;var fiber=findReactFiber(el);if(fiber){var onChange=findReactOnChange(fiber);if(onChange){try{onChange({target:el,currentTarget:el,type:'change',preventDefault:function(){},stopPropagation:function(){},persist:function(){},nativeEvent:new Event('change')});}catch(e){}}}if(el._valueTracker)el._valueTracker.setValue('');el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));}else if(el.tagName==='TEXTAREA'){el.focus();el.select();var ok=false;try{document.execCommand('selectAll');}catch(e){}try{ok=document.execCommand('insertText',false,val);}catch(e){}if(!ok){var setter=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value');if(setter&&setter.set)setter.set.call(el,val);else el.value=val;var fiber=findReactFiber(el);if(fiber){var onChange=findReactOnChange(fiber);if(onChange){try{onChange({target:el,currentTarget:el,type:'change',preventDefault:function(){},stopPropagation:function(){},persist:function(){},nativeEvent:new Event('change')});}catch(e){}}}if(el._valueTracker)el._valueTracker.setValue('');el.dispatchEvent(new Event('input',{bubbles:true}));}}else{el.focus();var nativeSetter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value');if(nativeSetter&&nativeSetter.set)nativeSetter.set.call(el,'');else el.value='';if(el._valueTracker)el._valueTracker.setValue('');el.dispatchEvent(new Event('input',{bubbles:true}));el.select();var ok=false;try{document.execCommand('selectAll');}catch(e){}try{ok=document.execCommand('insertText',false,val);}catch(e){}if(!ok){if(nativeSetter&&nativeSetter.set)nativeSetter.set.call(el,val);else el.value=val;var fiber=findReactFiber(el);if(fiber){var onChange=findReactOnChange(fiber);if(onChange){try{onChange({target:el,currentTarget:el,type:'change',preventDefault:function(){},stopPropagation:function(){},persist:function(){},nativeEvent:new Event('change')});}catch(e){}}}if(el._valueTracker)el._valueTracker.setValue('');el.dispatchEvent(new Event('input',{bubbles:true}));}}el.dispatchEvent(new Event('change',{bubbles:true}));el.dispatchEvent(new Event('blur',{bubbles:true}));}function setCellContent(cell,text){var inputs=cell.querySelectorAll('input');var selects=cell.querySelectorAll('select');var textareas=cell.querySelectorAll('textarea');if(inputs.length>0)for(var i=0;i<inputs.length;i++)setElementValue(inputs[i],text);if(selects.length>0)for(var i=0;i<selects.length;i++)setElementValue(selects[i],text);if(textareas.length>0)for(var i=0;i<textareas.length;i++)setElementValue(textareas[i],text);if(inputs.length===0&&selects.length===0&&textareas.length===0){cell.textContent=text;}}if(type==='table'){var newHeaders=JSON.parse(headersStr);var newRows=JSON.parse(rowsStr);var table=document.querySelector('table[data-devtoolkit-id="'+id+'"]');if(!table)return;if(newHeaders.length>0){var hCells=table.querySelectorAll('thead th, thead td');for(var i=0;i<newHeaders.length&&i<hCells.length;i++){setCellContent(hCells[i],newHeaders[i]);}}var tbody=table.querySelector('tbody');if(!tbody){tbody=document.createElement('tbody');table.appendChild(tbody);}var existingRows=tbody.querySelectorAll(':scope > tr');var colCount=newHeaders.length||(newRows[0]?newRows[0].length:1);for(var ri=0;ri<newRows.length;ri++){var tr;if(ri<existingRows.length){tr=existingRows[ri];}else{tr=document.createElement('tr');for(var c=0;c<colCount;c++){var td=document.createElement('td');tr.appendChild(td);}tbody.appendChild(tr);}var cells=tr.querySelectorAll('td, th');for(var ci=0;ci<newRows[ri].length&&ci<cells.length;ci++){setCellContent(cells[ci],newRows[ri][ci]);}}for(var ri=existingRows.length-1;ri>=newRows.length;ri--){existingRows[ri].remove();}}if(type==='list'){var newItems=JSON.parse(itemsStr);var list=document.querySelector('ul[data-devtoolkit-id="'+id+'"], ol[data-devtoolkit-id="'+id+'"]');if(!list)return;var existingItems=list.querySelectorAll(':scope > li');for(var i=0;i<newItems.length;i++){if(i<existingItems.length){setCellContent(existingItems[i],newItems[i]);}else{var li=document.createElement('li');li.textContent=newItems[i];list.appendChild(li);}}for(var i=existingItems.length-1;i>=newItems.length;i--){existingItems[i].remove();}}})();`
-        await new Promise<void>((resolve, reject) => {
+        const syncExpr = `(function(){try{var id=${JSON.stringify(domId)};var newHeaders=${JSON.stringify(headers)};var newRows=${JSON.stringify(rows)};var table=document.querySelector('table[data-devtoolkit-id="'+id+'"]');if(!table){var allTables=document.querySelectorAll('table');table=allTables.length>0?allTables[0]:null;}if(!table)return{ok:false,err:'table not found: '+id};function findHandler(el){var keys=Object.keys(el);for(var i=0;i<keys.length;i++){if(keys[i].indexOf('__reactFiber')===0||keys[i].indexOf('__reactInternalInstance')===0){var fiber=el[keys[i]];while(fiber){var p=fiber.memoizedProps||fiber.pendingProps;if(p){if(typeof p.onChange==='function')return p.onChange;if(typeof p.onInput==='function')return p.onInput;}fiber=fiber.return;}}}if(el.__vue__){var vm=el.__vue__;if(typeof vm.$emit==='function')return function(e){vm.$emit('input',e.target.value);vm.$emit('change',e.target.value);};}if(el.__vueParentComponent){var vc=el.__vueParentComponent;if(vc&&vc.emit)return function(e){vc.emit('update:modelValue',e.target.value);vc.emit('change',e.target.value);};}return null;}function setVal(el,val){el.focus();if(el.tagName==='SELECT'){var found=false;for(var i=0;i<el.options.length;i++){if(el.options[i].textContent.trim()===val||el.options[i].value===val){found=true;break;}}if(!found){var o=document.createElement('option');o.value=val;o.textContent=val;el.appendChild(o);}var setter=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value');if(setter&&setter.set)setter.set.call(el,val);else el.value=val;if(el._valueTracker)el._valueTracker.setValue('');var handler=findHandler(el);if(handler){try{handler({target:el,currentTarget:el,type:'change'});}catch(e){}}el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));}else{el.focus();var ns=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value');if(ns&&ns.set)ns.set.call(el,'');else el.value='';if(el._valueTracker)el._valueTracker.setValue('');el.dispatchEvent(new Event('input',{bubbles:true}));el.select();var ok=false;try{document.execCommand('selectAll');}catch(e){}try{ok=document.execCommand('insertText',false,val);}catch(e){}if(!ok){if(ns&&ns.set)ns.set.call(el,val);else el.value=val;if(el._valueTracker)el._valueTracker.setValue('');var handler=findHandler(el);if(handler){try{handler({target:el,currentTarget:el,type:'change'});}catch(e){}}el.dispatchEvent(new Event('input',{bubbles:true}));}}el.dispatchEvent(new Event('change',{bubbles:true}));el.dispatchEvent(new Event('blur',{bubbles:true}));}function setCell(cell,text){var ins=cell.querySelectorAll('input');var sels=cell.querySelectorAll('select');var tas=cell.querySelectorAll('textarea');for(var i=0;i<ins.length;i++)setVal(ins[i],text);for(var i=0;i<sels.length;i++)setVal(sels[i],text);for(var i=0;i<tas.length;i++)setVal(tas[i],text);if(!ins.length&&!sels.length&&!tas.length)cell.textContent=text;}var info={found:true,headers:0,rows:0,selects:0,inputs:0};if(newHeaders.length>0){var hc=table.querySelectorAll('thead th, thead td');for(var i=0;i<newHeaders.length&&i<hc.length;i++){setCell(hc[i],newHeaders[i]);info.headers++;}}var tbody=table.querySelector('tbody');if(!tbody){tbody=document.createElement('tbody');table.appendChild(tbody);}var erows=tbody.querySelectorAll(':scope > tr');var cc=newHeaders.length||(newRows[0]?newRows[0].length:1);for(var ri=0;ri<newRows.length;ri++){var tr;if(ri<erows.length)tr=erows[ri];else{tr=document.createElement('tr');for(var c=0;c<cc;c++){var td=document.createElement('td');tr.appendChild(td);}tbody.appendChild(tr);}var cells=tr.querySelectorAll('td, th');for(var ci=0;ci<newRows[ri].length&&ci<cells.length;ci++){setCell(cells[ci],newRows[ri][ci]);info.selects+=cells[ci].querySelectorAll('select').length;info.inputs+=cells[ci].querySelectorAll('input').length;}info.rows++;}for(var ri=erows.length-1;ri>=newRows.length;ri--)erows[ri].remove();return info;}catch(e){return{ok:false,err:e.message||String(e)};}})()`
+        const result = await new Promise<any>((resolve, reject) => {
           chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
-            expression: syncJs,
+            expression: syncExpr,
             returnByValue: true,
-          }, () => {
+          }, (res: any) => {
             if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message))
-            else resolve()
+            else resolve(res)
           })
         })
         if (!wasAttached) {
@@ -286,15 +270,17 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             })
           })
         }
-        sendResponse({ success: true })
+        const val = result?.result?.value
+        if (val && val.ok === false) {
+          sendResponse({ success: false, error: val.err || '同步失败' })
+        } else if (val && val.found) {
+          sendResponse({ success: true, info: `找到表格,更新${val.rows}行${val.headers}列,${val.selects}个select,${val.inputs}个input` })
+        } else {
+          sendResponse({ success: true })
+        }
       } catch (e: any) {
         if (debuggerTabs.has(tabId)) {
-          try {
-            chrome.debugger.detach({ tabId }, () => {
-              debuggerTabs.delete(tabId)
-              if (debuggerTabs.size === 0) stopKeepalive()
-            })
-          } catch {}
+          try { chrome.debugger.detach({ tabId }, () => { debuggerTabs.delete(tabId); if (debuggerTabs.size === 0) stopKeepalive() }) } catch {}
         }
         sendResponse({ success: false, error: e.message || '同步失败' })
       }
@@ -312,23 +298,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         sendResponse({ success: false, error: '无法获取标签页' })
         return
       }
+      const wasAttached = debuggerTabs.has(tabId)
       try {
-        await chrome.scripting.executeScript({
-          target: { tabId },
-          func: (syncId: string, itemsJson: string) => {
-            var existing = document.getElementById('__devtoolkit_sync__')
-            if (existing) existing.remove()
-            var el = document.createElement('devtoolkit-sync')
-            el.id = '__devtoolkit_sync__'
-            el.style.display = 'none'
-            el.setAttribute('data-type', 'list')
-            el.setAttribute('data-id', syncId)
-            el.setAttribute('data-items', itemsJson)
-            document.body.appendChild(el)
-          },
-          args: [domId, JSON.stringify(items)],
-        })
-        const wasAttached = debuggerTabs.has(tabId)
         if (!wasAttached) {
           await new Promise<void>((resolve, reject) => {
             chrome.debugger.attach({ tabId }, '1.3', () => {
@@ -340,14 +311,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             })
           })
         }
-        const syncJs = `(function(){var el=document.getElementById('__devtoolkit_sync__');if(!el)return;var type=el.getAttribute('data-type');var id=el.getAttribute('data-id')||'';var headersStr=el.getAttribute('data-headers')||'[]';var rowsStr=el.getAttribute('data-rows')||'[]';var itemsStr=el.getAttribute('data-items')||'[]';el.remove();function findReactFiber(dom){var keys=Object.keys(dom);for(var i=0;i<keys.length;i++){if(keys[i].indexOf('reactFiber')!==-1||keys[i].indexOf('reactInternalInstance')!==-1){return dom[keys[i]];}}return null;}function findReactOnChange(fiber){var current=fiber;while(current){var props=current.memoizedProps||current.pendingProps;if(props){if(typeof props.onChange==='function')return props.onChange;if(typeof props.onInput==='function')return props.onInput;}current=current.return;}return null;}function setElementValue(el,val){el.focus();el.dispatchEvent(new Event('focus',{bubbles:true}));if(el.tagName==='SELECT'){var found=false;var opts=el.options;for(var i=0;i<opts.length;i++){if(opts[i].textContent.trim()===val||opts[i].value===val){found=true;break;}}if(!found){var o=document.createElement('option');o.value=val;o.textContent=val;el.appendChild(o);}var setter=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value');if(setter&&setter.set)setter.set.call(el,val);else el.value=val;var fiber=findReactFiber(el);if(fiber){var onChange=findReactOnChange(fiber);if(onChange){try{onChange({target:el,currentTarget:el,type:'change',preventDefault:function(){},stopPropagation:function(){},persist:function(){},nativeEvent:new Event('change')});}catch(e){}}}if(el._valueTracker)el._valueTracker.setValue('');el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));}else if(el.tagName==='TEXTAREA'){el.focus();el.select();var ok=false;try{document.execCommand('selectAll');}catch(e){}try{ok=document.execCommand('insertText',false,val);}catch(e){}if(!ok){var setter=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value');if(setter&&setter.set)setter.set.call(el,val);else el.value=val;var fiber=findReactFiber(el);if(fiber){var onChange=findReactOnChange(fiber);if(onChange){try{onChange({target:el,currentTarget:el,type:'change',preventDefault:function(){},stopPropagation:function(){},persist:function(){},nativeEvent:new Event('change')});}catch(e){}}}if(el._valueTracker)el._valueTracker.setValue('');el.dispatchEvent(new Event('input',{bubbles:true}));}}else{el.focus();var nativeSetter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value');if(nativeSetter&&nativeSetter.set)nativeSetter.set.call(el,'');else el.value='';if(el._valueTracker)el._valueTracker.setValue('');el.dispatchEvent(new Event('input',{bubbles:true}));el.select();var ok=false;try{document.execCommand('selectAll');}catch(e){}try{ok=document.execCommand('insertText',false,val);}catch(e){}if(!ok){if(nativeSetter&&nativeSetter.set)nativeSetter.set.call(el,val);else el.value=val;var fiber=findReactFiber(el);if(fiber){var onChange=findReactOnChange(fiber);if(onChange){try{onChange({target:el,currentTarget:el,type:'change',preventDefault:function(){},stopPropagation:function(){},persist:function(){},nativeEvent:new Event('change')});}catch(e){}}}if(el._valueTracker)el._valueTracker.setValue('');el.dispatchEvent(new Event('input',{bubbles:true}));}}el.dispatchEvent(new Event('change',{bubbles:true}));el.dispatchEvent(new Event('blur',{bubbles:true}));}function setCellContent(cell,text){var inputs=cell.querySelectorAll('input');var selects=cell.querySelectorAll('select');var textareas=cell.querySelectorAll('textarea');if(inputs.length>0)for(var i=0;i<inputs.length;i++)setElementValue(inputs[i],text);if(selects.length>0)for(var i=0;i<selects.length;i++)setElementValue(selects[i],text);if(textareas.length>0)for(var i=0;i<textareas.length;i++)setElementValue(textareas[i],text);if(inputs.length===0&&selects.length===0&&textareas.length===0){cell.textContent=text;}}if(type==='table'){var newHeaders=JSON.parse(headersStr);var newRows=JSON.parse(rowsStr);var table=document.querySelector('table[data-devtoolkit-id="'+id+'"]');if(!table)return;if(newHeaders.length>0){var hCells=table.querySelectorAll('thead th, thead td');for(var i=0;i<newHeaders.length&&i<hCells.length;i++){setCellContent(hCells[i],newHeaders[i]);}}var tbody=table.querySelector('tbody');if(!tbody){tbody=document.createElement('tbody');table.appendChild(tbody);}var existingRows=tbody.querySelectorAll(':scope > tr');var colCount=newHeaders.length||(newRows[0]?newRows[0].length:1);for(var ri=0;ri<newRows.length;ri++){var tr;if(ri<existingRows.length){tr=existingRows[ri];}else{tr=document.createElement('tr');for(var c=0;c<colCount;c++){var td=document.createElement('td');tr.appendChild(td);}tbody.appendChild(tr);}var cells=tr.querySelectorAll('td, th');for(var ci=0;ci<newRows[ri].length&&ci<cells.length;ci++){setCellContent(cells[ci],newRows[ri][ci]);}}for(var ri=existingRows.length-1;ri>=newRows.length;ri--){existingRows[ri].remove();}}if(type==='list'){var newItems=JSON.parse(itemsStr);var list=document.querySelector('ul[data-devtoolkit-id="'+id+'"], ol[data-devtoolkit-id="'+id+'"]');if(!list)return;var existingItems=list.querySelectorAll(':scope > li');for(var i=0;i<newItems.length;i++){if(i<existingItems.length){setCellContent(existingItems[i],newItems[i]);}else{var li=document.createElement('li');li.textContent=newItems[i];list.appendChild(li);}}for(var i=existingItems.length-1;i>=newItems.length;i--){existingItems[i].remove();}}})();`
-        await new Promise<void>((resolve, reject) => {
+        const syncExpr = `(function(){try{var id=${JSON.stringify(domId)};var newItems=${JSON.stringify(items)};var list=document.querySelector('ul[data-devtoolkit-id="'+id+'"], ol[data-devtoolkit-id="'+id+'"]');if(!list){var allLists=document.querySelectorAll('ul, ol');list=allLists.length>0?allLists[0]:null;}if(!list)return{ok:false,err:'list not found: '+id};function findHandler(el){var keys=Object.keys(el);for(var i=0;i<keys.length;i++){if(keys[i].indexOf('__reactFiber')===0||keys[i].indexOf('__reactInternalInstance')===0){var fiber=el[keys[i]];while(fiber){var p=fiber.memoizedProps||fiber.pendingProps;if(p){if(typeof p.onChange==='function')return p.onChange;if(typeof p.onInput==='function')return p.onInput;}fiber=fiber.return;}}}if(el.__vue__){var vm=el.__vue__;if(typeof vm.$emit==='function')return function(e){vm.$emit('input',e.target.value);vm.$emit('change',e.target.value);};}if(el.__vueParentComponent){var vc=el.__vueParentComponent;if(vc&&vc.emit)return function(e){vc.emit('update:modelValue',e.target.value);vc.emit('change',e.target.value);};}return null;}function setVal(el,val){el.focus();if(el.tagName==='SELECT'){var found=false;for(var i=0;i<el.options.length;i++){if(el.options[i].textContent.trim()===val||el.options[i].value===val){found=true;break;}}if(!found){var o=document.createElement('option');o.value=val;o.textContent=val;el.appendChild(o);}var setter=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value');if(setter&&setter.set)setter.set.call(el,val);else el.value=val;if(el._valueTracker)el._valueTracker.setValue('');var handler=findHandler(el);if(handler){try{handler({target:el,currentTarget:el,type:'change'});}catch(e){}}el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));}else{el.focus();var ns=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value');if(ns&&ns.set)ns.set.call(el,'');else el.value='';if(el._valueTracker)el._valueTracker.setValue('');el.dispatchEvent(new Event('input',{bubbles:true}));el.select();var ok=false;try{document.execCommand('selectAll');}catch(e){}try{ok=document.execCommand('insertText',false,val);}catch(e){}if(!ok){if(ns&&ns.set)ns.set.call(el,val);else el.value=val;if(el._valueTracker)el._valueTracker.setValue('');var handler=findHandler(el);if(handler){try{handler({target:el,currentTarget:el,type:'change'});}catch(e){}}el.dispatchEvent(new Event('input',{bubbles:true}));}}el.dispatchEvent(new Event('change',{bubbles:true}));el.dispatchEvent(new Event('blur',{bubbles:true}));}function setItem(li,text){var ins=li.querySelectorAll('input');var sels=li.querySelectorAll('select');var tas=li.querySelectorAll('textarea');for(var i=0;i<ins.length;i++)setVal(ins[i],text);for(var i=0;i<sels.length;i++)setVal(sels[i],text);for(var i=0;i<tas.length;i++)setVal(tas[i],text);if(!ins.length&&!sels.length&&!tas.length)li.textContent=text;}var info={found:true,items:0};var eitems=list.querySelectorAll(':scope > li');for(var i=0;i<newItems.length;i++){if(i<eitems.length)setItem(eitems[i],newItems[i]);else{var li=document.createElement('li');li.textContent=newItems[i];list.appendChild(li);}info.items++;}for(var i=eitems.length-1;i>=newItems.length;i--)eitems[i].remove();return info;}catch(e){return{ok:false,err:e.message||String(e)};}})()`
+        const result = await new Promise<any>((resolve, reject) => {
           chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
-            expression: syncJs,
+            expression: syncExpr,
             returnByValue: true,
-          }, () => {
+          }, (res: any) => {
             if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message))
-            else resolve()
+            else resolve(res)
           })
         })
         if (!wasAttached) {
@@ -359,8 +330,18 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             })
           })
         }
-        sendResponse({ success: true })
+        const val = result?.result?.value
+        if (val && val.ok === false) {
+          sendResponse({ success: false, error: val.err || '同步失败' })
+        } else if (val && val.found) {
+          sendResponse({ success: true, info: `找到列表,更新${val.items}项` })
+        } else {
+          sendResponse({ success: true })
+        }
       } catch (e: any) {
+        if (debuggerTabs.has(tabId)) {
+          try { chrome.debugger.detach({ tabId }, () => { debuggerTabs.delete(tabId); if (debuggerTabs.size === 0) stopKeepalive() }) } catch {}
+        }
         sendResponse({ success: false, error: e.message || '同步失败' })
       }
     }).catch(() => {

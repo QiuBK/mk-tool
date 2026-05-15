@@ -174,7 +174,7 @@ export async function exportTableToExcel(table: ScrapedTable, fileName?: string)
   return name
 }
 
-export async function syncTableToPage(domId: string, headers: string[], rows: string[][]): Promise<{ success: boolean; error?: string }> {
+export async function syncTableToPage(domId: string, headers: string[], rows: string[][]): Promise<{ success: boolean; error?: string; info?: string }> {
   if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) {
     return { success: false, error: '扩展API不可用' }
   }
@@ -193,7 +193,7 @@ export async function syncTableToPage(domId: string, headers: string[], rows: st
   })
 }
 
-export async function syncListToPage(domId: string, items: string[]): Promise<{ success: boolean; error?: string }> {
+export async function syncListToPage(domId: string, items: string[]): Promise<{ success: boolean; error?: string; info?: string }> {
   if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) {
     return { success: false, error: '扩展API不可用' }
   }
