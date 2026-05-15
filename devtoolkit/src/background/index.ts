@@ -289,9 +289,15 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         return { success: false, error: val.err || '同步失败' }
       } else if (val && val.ok === true && val.diag) {
         const d = val.diag
-        let info = `修改Vue数据:${d.modified}项`
+        let info = `Vue3修改:${d.modified}项 访问组件:${d.componentsVisited}个`
+        if (d.piniaFound) info += ' Pinia:是'
         if (d.paths.length > 0) info += ` [${d.paths.slice(0, 3).join(', ')}]`
-        if (d.errors.length > 0) info += ` 错误:${d.errors.length}`
+        if (d.dataSamples.length > 0) {
+          const s = d.dataSamples[0]
+          info += ` 数据源:${s.source} keys:[${s.keys.join(',')}]`
+          const sampleKeys = Object.keys(s).filter(k => k !== 'source' && k !== 'keys')
+          if (sampleKeys.length > 0) info += ` 样例:${sampleKeys[0]}=${s[sampleKeys[0]]}`
+        }
         return { success: true, info }
       } else {
         return { success: true, info: JSON.stringify(val).substring(0, 300) }

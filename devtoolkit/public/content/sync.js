@@ -8,7 +8,7 @@
   var itemsStr = el.getAttribute('data-items') || '[]';
   el.remove();
 
-  var diag = { type: type, id: id, foundElement: false, modified: 0, paths: [], errors: [] };
+  var diag = { type: type, id: id, foundElement: false, modified: 0, paths: [], componentsVisited: 0, dataSamples: [], piniaFound: false };
 
   function findVue3App() {
     var appEl = document.getElementById('app');
@@ -20,88 +20,145 @@
     return null;
   }
 
-  function walkVue3Components(instance, depth, callback) {
-    if (!instance || depth > 15) return;
-    try { callback(instance); } catch(e) {}
-    if (instance.subTree && instance.subTree.component) {
-      walkVue3Components(instance.subTree.component, depth + 1, callback);
+  function collectAllComponents(instance, depth, result) {
+    if (!instance || depth > 20) return;
+    result.push(instance);
+    var subTree = instance.subTree;
+    if (!subTree) return;
+    if (subTree.component) {
+      collectAllComponents(subTree.component, depth + 1, result);
     }
-    if (instance.subTree && instance.subTree.children) {
-      var children = instance.subTree.children;
-      if (Array.isArray(children)) {
-        for (var i = 0; i < children.length; i++) {
-          if (children[i] && children[i].component) {
-            walkVue3Components(children[i].component, depth + 1, callback);
+    var children = subTree.children;
+    if (Array.isArray(children)) {
+      for (var i = 0; i < children.length; i++) {
+        if (children[i] && children[i].component) {
+          collectAllComponents(children[i].component, depth + 1, result);
+        }
+        if (children[i] && children[i].dynamicChildren) {
+          for (var j = 0; j < children[i].dynamicChildren.length; j++) {
+            if (children[i].dynamicChildren[j] && children[i].dynamicChildren[j].component) {
+              collectAllComponents(children[i].dynamicChildren[j].component, depth + 1, result);
+            }
           }
         }
       }
     }
-    if (instance.subTree && instance.subTree.dynamicChildren) {
-      var dc = instance.subTree.dynamicChildren;
-      for (var i = 0; i < dc.length; i++) {
-        if (dc[i] && dc[i].component) {
-          walkVue3Components(dc[i].component, depth + 1, callback);
+    if (subTree.dynamicChildren) {
+      for (var i = 0; i < subTree.dynamicChildren.length; i++) {
+        if (subTree.dynamicChildren[i] && subTree.dynamicChildren[i].component) {
+          collectAllComponents(subTree.dynamicChildren[i].component, depth + 1, result);
         }
       }
+    }
+    if (instance.subTree.children && !Array.isArray(instance.subTree.children) && instance.subTree.children.component) {
+      collectAllComponents(instance.subTree.children.component, depth + 1, result);
+    }
+  }
+
+  function tryModifyValue(obj, key, oldVal, newVal) {
+    try {
+      var cur = obj[key];
+      if (cur === oldVal || cur === Number(oldVal) || String(cur) === String(oldVal)) {
+        var setVal = (typeof cur === 'number') ? Number(newVal) : newVal;
+        obj[key] = setVal;
+        diag.modified++;
+        diag.paths.push(key + '=' + oldVal + '->' + newVal + '(type:' + typeof cur + ')');
+        return true;
+      }
+    } catch(e) {}
+    return false;
+  }
+
+  function searchAndModify(instance, oldVal, newVal) {
+    if (!instance) return;
+    diag.componentsVisited++;
+    var proxy = instance.proxy;
+    var dataSources = [];
+    try { if (instance.setupState) dataSources.push({ name: 'setupState', data: instance.setupState }); } catch(e) {}
+    try { if (proxy && proxy.$data) dataSources.push({ name: '$data', data: proxy.$data }); } catch(e) {}
+    try { if (proxy) dataSources.push({ name: 'proxy', data: proxy }); } catch(e) {}
+
+    for (var di = 0; di < dataSources.length; di++) {
+      var ds = dataSources[di].data;
+      var dsName = dataSources[di].name;
+      try {
+        var keys = Object.keys(ds);
+        if (diag.dataSamples.length < 3 && keys.length > 0) {
+          var sample = { source: dsName, keys: keys.slice(0, 10) };
+          for (var si = 0; si < Math.min(keys.length, 3); si++) {
+            try {
+              var sv = ds[keys[si]];
+              if (Array.isArray(sv)) sample[keys[si]] = 'Array(' + sv.length + ')' + (sv.length > 0 && typeof sv[0] === 'object' ? JSON.stringify(Object.keys(sv[0]).slice(0, 5)) : '');
+              else sample[keys[si]] = typeof sv + ':' + String(sv).substring(0, 30);
+            } catch(e) {}
+          }
+          diag.dataSamples.push(sample);
+        }
+        for (var ki = 0; ki < keys.length; ki++) {
+          var key = keys[ki];
+          try {
+            var val = ds[key];
+            if (Array.isArray(val)) {
+              for (var ri = 0; ri < val.length; ri++) {
+                if (typeof val[ri] === 'object' && val[ri] !== null) {
+                  var props = Object.keys(val[ri]);
+                  for (var pi = 0; pi < props.length; pi++) {
+                    if (tryModifyValue(val[ri], props[pi], oldVal, newVal)) return;
+                  }
+                } else {
+                  if (tryModifyValue(val, ri, oldVal, newVal)) return;
+                }
+              }
+            }
+          } catch(e) {}
+        }
+      } catch(e) {}
     }
   }
 
   function findAndModifyVue3Data(app, oldVal, newVal) {
-    var found = false;
     var rootInstance = app._instance;
-    if (!rootInstance) return false;
+    if (!rootInstance) return;
 
-    walkVue3Components(rootInstance, 0, function(instance) {
-      if (found) return;
-      var proxy = instance.proxy;
-      if (!proxy) return;
+    var allComponents = [];
+    collectAllComponents(rootInstance, 0, allComponents);
 
-      var dataSources = [];
-      try { if (instance.setupState) dataSources.push(instance.setupState); } catch(e) {}
-      try { if (proxy.$data) dataSources.push(proxy.$data); } catch(e) {}
-      try { dataSources.push(proxy); } catch(e) {}
+    for (var i = 0; i < allComponents.length; i++) {
+      searchAndModify(allComponents[i], oldVal, newVal);
+      if (diag.modified > 0) return;
+    }
 
-      for (var di = 0; di < dataSources.length; di++) {
-        if (found) break;
-        var ds = dataSources[di];
-        try {
-          var keys = Object.keys(ds);
-          for (var ki = 0; ki < keys.length; ki++) {
-            if (found) break;
-            var key = keys[ki];
-            try {
-              var val = ds[key];
-              if (Array.isArray(val)) {
-                for (var ri = 0; ri < val.length; ri++) {
-                  if (found) break;
-                  if (typeof val[ri] === 'object' && val[ri] !== null) {
-                    var props = Object.keys(val[ri]);
-                    for (var pi = 0; pi < props.length; pi++) {
-                      var prop = props[pi];
-                      try {
-                        if (String(val[ri][prop]) === String(oldVal)) {
-                          val[ri][prop] = newVal;
-                          found = true;
-                          diag.modified++;
-                          diag.paths.push(key + '[' + ri + '].' + prop + '=' + oldVal + '->' + newVal);
-                          break;
-                        }
-                      } catch(e) {}
+    try {
+      var pinia = app.config.globalProperties.$pinia;
+      if (pinia) {
+        diag.piniaFound = true;
+        var stores = pinia._s;
+        if (stores) {
+          stores.forEach(function(store, storeName) {
+            if (diag.modified > 0) return;
+            var keys = Object.keys(store);
+            for (var ki = 0; ki < keys.length; ki++) {
+              var key = keys[ki];
+              try {
+                var val = store[key];
+                if (Array.isArray(val)) {
+                  for (var ri = 0; ri < val.length; ri++) {
+                    if (typeof val[ri] === 'object' && val[ri] !== null) {
+                      var props = Object.keys(val[ri]);
+                      for (var pi = 0; pi < props.length; pi++) {
+                        if (tryModifyValue(val[ri], props[pi], oldVal, newVal)) return;
+                      }
+                    } else {
+                      if (tryModifyValue(val, ri, oldVal, newVal)) return;
                     }
-                  } else if (String(val[ri]) === String(oldVal)) {
-                    val[ri] = newVal;
-                    found = true;
-                    diag.modified++;
-                    diag.paths.push(key + '[' + ri + ']=' + oldVal + '->' + newVal);
                   }
                 }
-              }
-            } catch(e) {}
-          }
-        } catch(e) {}
+              } catch(e) {}
+            }
+          });
+        }
       }
-    });
-    return found;
+    } catch(e) {}
   }
 
   function setCell(cell, text) {
