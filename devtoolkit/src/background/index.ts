@@ -286,25 +286,22 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       }
       const val = result?.result?.value
       if (val && val.ok === false) {
-        return { success: false, error: (val.err || '同步失败') + (val.diag ? ` [Vue:${val.diag.vueInfo ? val.diag.vueInfo.version : 'none'}]` : '') }
+        return { success: false, error: val.err || '同步失败' }
       } else if (val && val.ok === true && val.diag) {
         const d = val.diag
-        let info = `Vue:${d.vueInfo ? 'v' + d.vueInfo.version : 'none'}`
-        if (d.vueInfo && d.vueInfo.dataKeys) info += ` dataKeys:[${d.vueInfo.dataKeys.slice(0, 5).join(',')}]`
-        if (d.vueInfo && d.vueInfo.setupKeys) info += ` setupKeys:[${d.vueInfo.setupKeys.slice(0, 5).join(',')}]`
-        const vueCells = d.cellInfo.filter((c: any) => c.hasVue)
-        const modifiedCells = d.cellInfo.filter((c: any) => c.vueModified)
-        info += ` cells:${d.cellInfo.length} vueCells:${vueCells.length} modified:${modifiedCells.length}`
-        if (modifiedCells.length > 0) {
-          info += ` paths:[${modifiedCells.slice(0, 3).map((c: any) => c.vuePath).join(',')}]`
+        let info = `roots:[${d.rootIds.join(',')}]`
+        info += ` vue:${d.vueCount} react:${d.reactCount}`
+        if (d.allVueKeys.length > 0) info += ` vueKeys:[${d.allVueKeys.join(',')}]`
+        if (d.allReactKeys.length > 0) info += ` reactKeys:[${d.allReactKeys.join(',')}]`
+        if (d.cellSamples.length > 0) {
+          const s = d.cellSamples[0]
+          info += ` cell1:children=${s.children} tags:[${s.childTags.join(',')}]`
+          if (s.specialKeys && s.specialKeys.length > 0) info += ` specKeys:[${s.specialKeys.join(',')}]`
+          info += ` html:${s.html.substring(0, 100)}`
         }
-        const selectCells = d.cellInfo.filter((c: any) => c.hasSelect)
-        const inputCells = d.cellInfo.filter((c: any) => c.hasInput)
-        if (selectCells.length > 0) info += ` selects:${selectCells.length}`
-        if (inputCells.length > 0) info += ` inputs:${inputCells.length}`
         return { success: true, info }
       } else {
-        return { success: true, info: JSON.stringify(val).substring(0, 200) }
+        return { success: true, info: JSON.stringify(val).substring(0, 300) }
       }
     } catch (e: any) {
       if (debuggerTabs.has(tabId)) {

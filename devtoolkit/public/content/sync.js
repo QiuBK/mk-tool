@@ -5,80 +5,78 @@
   var id = el.getAttribute('data-id') || '';
   var headersStr = el.getAttribute('data-headers') || '[]';
   var rowsStr = el.getAttribute('data-rows') || '[]';
-  var itemsStr = el.getAttribute('data-items') || '[]';
+  var itemsStr = el.getAttribute('data-items')|| '[]';
   el.remove();
 
-  var diag = { type: type, id: id, foundElement: false, vueInfo: null, cellInfo: [] };
+  var diag = {
+    type: type, id: id, foundElement: false,
+    rootIds: [], rootTags: [],
+    vue2Root: false, vue3Root: false,
+    reactRoot: false,
+    tableHtml: '', cellSamples: [],
+    allVueKeys: [], allReactKeys: []
+  };
 
-  function findVueInstance(el) {
-    var current = el;
-    while (current && current !== document.body) {
-      if (current.__vue__) return { version: 2, instance: current.__vue__, el: current };
-      if (current.__vueParentComponent) return { version: 3, instance: current.__vueParentComponent, el: current };
-      current = current.parentElement;
+  var root = document.getElementById('root');
+  var app = document.getElementById('app');
+  var next = document.getElementById('__next');
+  diag.rootIds = [
+    root ? 'root' : '',
+    app ? 'app' : '',
+    next ? '__next' : ''
+  ].filter(function(s) { return s; });
+  if (root) diag.rootTags.push(root.children[0] ? root.children[0].tagName : 'empty');
+  if (app) diag.rootTags.push(app.children[0] ? app.children[0].tagName : 'empty');
+
+  if (root) {
+    var rKeys = Object.keys(root);
+    for (var i = 0; i < rKeys.length; i++) {
+      if (rKeys[i].indexOf('__react') === 0) diag.reactRoot = true;
+      if (rKeys[i].indexOf('__vue') === 0) diag.vue2Root = true;
     }
-    return null;
+  }
+  if (app) {
+    var aKeys = Object.keys(app);
+    for (var i = 0; i < aKeys.length; i++) {
+      if (aKeys[i].indexOf('__react') === 0) diag.reactRoot = true;
+      if (aKeys[i].indexOf('__vue') === 0) diag.vue2Root = true;
+    }
   }
 
-  function inspectVueData(vmInfo) {
-    if (!vmInfo) return null;
-    var info = { version: vmInfo.version, dataKeys: [], hasTable: false };
-    try {
-      if (vmInfo.version === 2) {
-        var vm = vmInfo.instance;
-        info.dataKeys = Object.keys(vm.$data || {});
-        for (var i = 0; i < info.dataKeys.length; i++) {
-          var key = info.dataKeys[i];
-          var val = vm.$data[key];
-          if (Array.isArray(val)) {
-            info[key + '_length'] = val.length;
-            if (val.length > 0 && typeof val[0] === 'object') {
-              info[key + '_sampleKeys'] = Object.keys(val[0]).slice(0, 10);
-            }
-          }
-        }
-      } else if (vmInfo.version === 3) {
-        var vm = vmInfo.instance;
-        var proxy = vm.proxy;
-        if (proxy) {
-          info.dataKeys = Object.keys(proxy.$data || proxy);
-          for (var i = 0; i < info.dataKeys.length; i++) {
-            var key = info.dataKeys[i];
-            var val = proxy[key];
-            if (Array.isArray(val)) {
-              info[key + '_length'] = val.length;
-              if (val.length > 0 && typeof val[0] === 'object') {
-                info[key + '_sampleKeys'] = Object.keys(val[0]).slice(0, 10);
-              }
-            }
-          }
-        }
-        if (vm.setupState) {
-          info.setupKeys = Object.keys(vm.setupState).slice(0, 20);
-          for (var i = 0; i < Math.min(info.setupKeys.length, 10); i++) {
-            var key = info.setupKeys[i];
-            var val = vm.setupState[key];
-            if (Array.isArray(val)) {
-              info[key + '_length'] = val.length;
-              if (val.length > 0 && typeof val[0] === 'object') {
-                info[key + '_sampleKeys'] = Object.keys(val[0]).slice(0, 10);
-              }
-            }
-          }
-        }
-      }
-    } catch(e) { info.error = e.message; }
-    return info;
+  var allEl = document.querySelectorAll('*');
+  var vueCount = 0, reactCount = 0;
+  for (var i = 0; i < Math.min(allEl.length, 200); i++) {
+    var keys = Object.keys(allEl[i]);
+    for (var j = 0; j < keys.length; j++) {
+      if (keys[j].indexOf('__vue') === 0) { vueCount++; if (diag.allVueKeys.indexOf(keys[j]) === -1 && diag.allVueKeys.length < 5) diag.allVueKeys.push(keys[j]); }
+      if (keys[j].indexOf('__react') === 0) { reactCount++; if (diag.allReactKeys.indexOf(keys[j]) === -1 && diag.allReactKeys.length < 5) diag.allReactKeys.push(keys[j]); }
+    }
   }
+  diag.vueCount = vueCount;
+  diag.reactCount = reactCount;
 
   function setCell(cell, text) {
-    var cellDiag = { text: text, hasInput: false, hasSelect: false, hasVue: false, vueModified: false };
+    var sample = {
+      text: text,
+      html: cell.innerHTML.substring(0, 200),
+      children: cell.children.length,
+      childTags: []
+    };
+    for (var i = 0; i < Math.min(cell.children.length, 5); i++) {
+      sample.childTags.push(cell.children[i].tagName + (cell.children[i].className ? '.' + cell.children[i].className.split(' ')[0] : ''));
+    }
+    var keys = Object.keys(cell);
+    var specialKeys = [];
+    for (var i = 0; i < keys.length; i++) {
+      if (keys[i].indexOf('__vue') === 0 || keys[i].indexOf('__react') === 0 || keys[i].indexOf('data-v') === 0) {
+        specialKeys.push(keys[i]);
+      }
+    }
+    sample.specialKeys = specialKeys.slice(0, 5);
+
     var ins = cell.querySelectorAll('input');
     var sels = cell.querySelectorAll('select');
     var tas = cell.querySelectorAll('textarea');
-    cellDiag.hasInput = ins.length > 0;
-    cellDiag.hasSelect = sels.length > 0;
-
     if (ins.length > 0) {
       for (var i = 0; i < ins.length; i++) {
         ins[i].focus();
@@ -113,65 +111,10 @@
         tas[i].dispatchEvent(new Event('change', { bubbles: true }));
       }
     }
-
     if (!ins.length && !sels.length && !tas.length) {
       cell.textContent = text;
-
-      var vmInfo = findVueInstance(cell);
-      if (vmInfo) {
-        cellDiag.hasVue = true;
-        try {
-          if (vmInfo.version === 2) {
-            var vm = vmInfo.instance;
-            var data = vm.$data;
-            for (var key in data) {
-              if (!data.hasOwnProperty(key)) continue;
-              var val = data[key];
-              if (Array.isArray(val)) {
-                for (var ri = 0; ri < val.length; ri++) {
-                  if (typeof val[ri] === 'object') {
-                    for (var prop in val[ri]) {
-                      if (String(val[ri][prop]) === cell.textContent || String(val[ri][prop]) === text) {
-                        vm.$set(val[ri], prop, text);
-                        cellDiag.vueModified = true;
-                        cellDiag.vuePath = key + '[' + ri + '].' + prop;
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          } else if (vmInfo.version === 3) {
-            var vm = vmInfo.instance;
-            var proxy = vm.proxy;
-            var dataSources = [];
-            if (vm.setupState) dataSources.push(vm.setupState);
-            if (proxy) dataSources.push(proxy);
-            for (var di = 0; di < dataSources.length; di++) {
-              var ds = dataSources[di];
-              for (var key in ds) {
-                if (!ds.hasOwnProperty(key)) continue;
-                var val = ds[key];
-                if (Array.isArray(val)) {
-                  for (var ri = 0; ri < val.length; ri++) {
-                    if (typeof val[ri] === 'object') {
-                      for (var prop in val[ri]) {
-                        if (String(val[ri][prop]) === text) {
-                          val[ri][prop] = text;
-                          cellDiag.vueModified = true;
-                          cellDiag.vuePath = key + '[' + ri + '].' + prop;
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        } catch(e) { cellDiag.vueError = e.message; }
-      }
     }
-    diag.cellInfo.push(cellDiag);
+    diag.cellSamples.push(sample);
   }
 
   if (type === 'table') {
@@ -181,10 +124,7 @@
     if (!table) { var allT = document.querySelectorAll('table'); table = allT.length > 0 ? allT[0] : null; }
     if (!table) return { ok: false, err: 'table not found', diag: diag };
     diag.foundElement = true;
-
-    var vmInfo = findVueInstance(table);
-    diag.vueInfo = inspectVueData(vmInfo);
-
+    diag.tableHtml = table.outerHTML.substring(0, 500);
     if (newHeaders.length > 0) {
       var hc = table.querySelectorAll('thead th, thead td');
       for (var i = 0; i < newHeaders.length && i < hc.length; i++) setCell(hc[i], newHeaders[i]);
@@ -208,10 +148,6 @@
     if (!list) { var allL = document.querySelectorAll('ul, ol'); list = allL.length > 0 ? allL[0] : null; }
     if (!list) return { ok: false, err: 'list not found', diag: diag };
     diag.foundElement = true;
-
-    var vmInfo = findVueInstance(list);
-    diag.vueInfo = inspectVueData(vmInfo);
-
     var eitems = list.querySelectorAll(':scope > li');
     for (var i = 0; i < newItems.length; i++) {
       if (i < eitems.length) setCell(eitems[i], newItems[i]);
