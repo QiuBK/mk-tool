@@ -286,12 +286,24 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       }
       const val = result?.result?.value
       if (val && val.ok === false) {
-        return { success: false, error: val.err || '同步失败' }
-      } else if (val && val.found) {
-        const detail = val.selects > 0 ? `找到表格,更新${val.rows}行${val.headers}列,${val.selects}个select,${val.inputs}个input` : val.items > 0 ? `找到列表,更新${val.items}项` : `找到表格,更新${val.rows}行${val.headers}列`
-        return { success: true, info: detail }
+        return { success: false, error: (val.err || '同步失败') + (val.diag ? ` [框架:${val.diag.framework}]` : '') }
+      } else if (val && val.ok === true && val.diag) {
+        const d = val.diag
+        let info = `框架:${d.framework}`
+        if (d.selects.length > 0) {
+          for (const s of d.selects) {
+            info += ` | select:设为"${s.setTo}"后值="${s.afterValue}"`
+            if (s.before) info += ` tracker:${s.before.hasValueTracker} fiber:${s.before.reactFiberFound} onChange:${s.before.onChangeFound} options:[${s.before.optionValues.join(',')}]`
+          }
+        }
+        if (d.inputs.length > 0) {
+          for (const s of d.inputs) {
+            info += ` | input:设为"${s.setTo}"后值="${s.afterValue}"`
+          }
+        }
+        return { success: true, info }
       } else {
-        return { success: true }
+        return { success: true, info: JSON.stringify(val) }
       }
     } catch (e: any) {
       if (debuggerTabs.has(tabId)) {
