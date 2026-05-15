@@ -289,15 +289,18 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         return { success: false, error: val.err || '同步失败' }
       } else if (val && val.ok === true && val.diag) {
         const d = val.diag
-        let info = `Vue3修改:${d.modified}项 访问组件:${d.componentsVisited}个`
-        if (d.piniaFound) info += ' Pinia:是'
-        if (d.paths.length > 0) info += ` [${d.paths.slice(0, 3).join(', ')}]`
-        if (d.dataSamples.length > 0) {
-          const s = d.dataSamples[0]
-          info += ` 数据源:${s.source} keys:[${s.keys.join(',')}]`
-          const sampleKeys = Object.keys(s).filter(k => k !== 'source' && k !== 'keys')
-          if (sampleKeys.length > 0) info += ` 样例:${sampleKeys[0]}=${s[sampleKeys[0]]}`
+        let info = `修改:${d.modified}项`
+        if (d.paths.length > 0) info += ` [${d.paths.slice(0, 3).join(',')}]`
+        const ii = d.instanceInfo
+        if (ii) {
+          info += ` _instance:${ii.hasInstance}`
+          if (ii.foundParentComponent) info += ` PC:是 proxy:${ii.hasProxy} setup:${ii.hasSetupState}`
+          if (ii.setupKeys) info += ` setupKeys:[${ii.setupKeys.join(',')}]`
+          if (ii.pcKeys) info += ` pcKeys:[${ii.pcKeys.slice(0, 5).join(',')}]`
+          if (ii.piniaFound) info += ' Pinia:是'
         }
+        info += ` appKeys:[${d.appKeys.slice(0, 5).join(',')}]`
+        if (d.domVueKeys.length > 0) info += ` domKeys:[${d.domVueKeys.join(',')}]`
         return { success: true, info }
       } else {
         return { success: true, info: JSON.stringify(val).substring(0, 300) }

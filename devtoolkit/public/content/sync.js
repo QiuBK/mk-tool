@@ -1,6 +1,6 @@
 (function() {
   var el = document.getElementById('__devtoolkit_sync__');
-  if (!el) return { ok: false, err: 'no sync element in DOM' };
+  if (!el) return { ok: false, err: 'no sync element' };
   var type = el.getAttribute('data-type');
   var id = el.getAttribute('data-id') || '';
   var headersStr = el.getAttribute('data-headers') || '[]';
@@ -8,50 +8,60 @@
   var itemsStr = el.getAttribute('data-items') || '[]';
   el.remove();
 
-  var diag = { type: type, id: id, foundElement: false, modified: 0, paths: [], componentsVisited: 0, dataSamples: [], piniaFound: false };
+  var diag = { type: type, id: id, foundElement: false, modified: 0, paths: [], appKeys: [], instanceInfo: null, domVueKeys: [] };
 
   function findVue3App() {
     var appEl = document.getElementById('app');
-    if (appEl && appEl.__vue_app__) return appEl.__vue_app__;
+    if (appEl && appEl.__vue_app__) return { app: appEl.__vue_app__, el: appEl };
     var all = document.querySelectorAll('*');
     for (var i = 0; i < all.length; i++) {
-      if (all[i].__vue_app__) return all[i].__vue_app__;
+      if (all[i].__vue_app__) return { app: all[i].__vue_app__, el: all[i] };
     }
     return null;
   }
 
-  function collectAllComponents(instance, depth, result) {
-    if (!instance || depth > 20) return;
-    result.push(instance);
-    var subTree = instance.subTree;
-    if (!subTree) return;
-    if (subTree.component) {
-      collectAllComponents(subTree.component, depth + 1, result);
+  var appResult = findVue3App();
+  if (appResult) {
+    var app = appResult.app;
+    var appEl = appResult.el;
+    diag.appKeys = Object.keys(app).slice(0, 20);
+    diag.instanceInfo = {
+      hasInstance: !!app._instance,
+      instanceType: app._instance ? typeof app._instance : 'none',
+      instanceKeys: app._instance ? Object.keys(app._instance).slice(0, 15) : [],
+      hasConfig: !!app.config,
+      configKeys: app.config ? Object.keys(app.config).slice(0, 10) : [],
+      hasGlobalProperties: !!(app.config && app.config.globalProperties),
+      gpKeys: (app.config && app.config.globalProperties) ? Object.keys(app.config.globalProperties).slice(0, 10) : []
+    };
+
+    var elKeys = Object.keys(appEl);
+    for (var i = 0; i < elKeys.length; i++) {
+      if (elKeys[i].indexOf('__vue') === 0) diag.domVueKeys.push(elKeys[i] + ':' + typeof appEl[elKeys[i]]);
     }
-    var children = subTree.children;
-    if (Array.isArray(children)) {
-      for (var i = 0; i < children.length; i++) {
-        if (children[i] && children[i].component) {
-          collectAllComponents(children[i].component, depth + 1, result);
-        }
-        if (children[i] && children[i].dynamicChildren) {
-          for (var j = 0; j < children[i].dynamicChildren.length; j++) {
-            if (children[i].dynamicChildren[j] && children[i].dynamicChildren[j].component) {
-              collectAllComponents(children[i].dynamicChildren[j].component, depth + 1, result);
+
+    if (!app._instance) {
+      var root = app._container || appEl;
+      var vnode = root._vnode || root.__vue_app__ ? null : null;
+      var allEl = document.querySelectorAll('*');
+      for (var i = 0; i < Math.min(allEl.length, 500); i++) {
+        var eKeys = Object.keys(allEl[i]);
+        for (var j = 0; j < eKeys.length; j++) {
+          if (eKeys[j].indexOf('__vueParentComponent') === 0) {
+            var comp = allEl[i][eKeys[j]];
+            diag.instanceInfo.foundParentComponent = true;
+            diag.instanceInfo.pcKeys = Object.keys(comp).slice(0, 15);
+            diag.instanceInfo.pcType = typeof comp;
+            diag.instanceInfo.hasProxy = !!comp.proxy;
+            diag.instanceInfo.hasSetupState = !!comp.setupState;
+            if (comp.setupState) {
+              diag.instanceInfo.setupKeys = Object.keys(comp.setupState).slice(0, 10);
             }
+            break;
           }
         }
+        if (diag.instanceInfo.foundParentComponent) break;
       }
-    }
-    if (subTree.dynamicChildren) {
-      for (var i = 0; i < subTree.dynamicChildren.length; i++) {
-        if (subTree.dynamicChildren[i] && subTree.dynamicChildren[i].component) {
-          collectAllComponents(subTree.dynamicChildren[i].component, depth + 1, result);
-        }
-      }
-    }
-    if (instance.subTree.children && !Array.isArray(instance.subTree.children) && instance.subTree.children.component) {
-      collectAllComponents(instance.subTree.children.component, depth + 1, result);
     }
   }
 
@@ -62,38 +72,25 @@
         var setVal = (typeof cur === 'number') ? Number(newVal) : newVal;
         obj[key] = setVal;
         diag.modified++;
-        diag.paths.push(key + '=' + oldVal + '->' + newVal + '(type:' + typeof cur + ')');
+        diag.paths.push(key + '=' + oldVal + '->' + newVal);
         return true;
       }
     } catch(e) {}
     return false;
   }
 
-  function searchAndModify(instance, oldVal, newVal) {
+  function searchComponentData(instance, oldVal, newVal) {
     if (!instance) return;
-    diag.componentsVisited++;
     var proxy = instance.proxy;
     var dataSources = [];
-    try { if (instance.setupState) dataSources.push({ name: 'setupState', data: instance.setupState }); } catch(e) {}
-    try { if (proxy && proxy.$data) dataSources.push({ name: '$data', data: proxy.$data }); } catch(e) {}
-    try { if (proxy) dataSources.push({ name: 'proxy', data: proxy }); } catch(e) {}
+    try { if (instance.setupState) dataSources.push(instance.setupState); } catch(e) {}
+    try { if (proxy && proxy.$data) dataSources.push(proxy.$data); } catch(e) {}
+    try { if (proxy) dataSources.push(proxy); } catch(e) {}
 
     for (var di = 0; di < dataSources.length; di++) {
-      var ds = dataSources[di].data;
-      var dsName = dataSources[di].name;
+      var ds = dataSources[di];
       try {
         var keys = Object.keys(ds);
-        if (diag.dataSamples.length < 3 && keys.length > 0) {
-          var sample = { source: dsName, keys: keys.slice(0, 10) };
-          for (var si = 0; si < Math.min(keys.length, 3); si++) {
-            try {
-              var sv = ds[keys[si]];
-              if (Array.isArray(sv)) sample[keys[si]] = 'Array(' + sv.length + ')' + (sv.length > 0 && typeof sv[0] === 'object' ? JSON.stringify(Object.keys(sv[0]).slice(0, 5)) : '');
-              else sample[keys[si]] = typeof sv + ':' + String(sv).substring(0, 30);
-            } catch(e) {}
-          }
-          diag.dataSamples.push(sample);
-        }
         for (var ki = 0; ki < keys.length; ki++) {
           var key = keys[ki];
           try {
@@ -116,31 +113,35 @@
     }
   }
 
-  function findAndModifyVue3Data(app, oldVal, newVal) {
-    var rootInstance = app._instance;
-    if (!rootInstance) return;
-
-    var allComponents = [];
-    collectAllComponents(rootInstance, 0, allComponents);
-
-    for (var i = 0; i < allComponents.length; i++) {
-      searchAndModify(allComponents[i], oldVal, newVal);
-      if (diag.modified > 0) return;
+  function findAndModifyViaDOM(oldVal, newVal) {
+    var allEl = document.querySelectorAll('*');
+    for (var i = 0; i < allEl.length; i++) {
+      var eKeys = Object.keys(allEl[i]);
+      for (var j = 0; j < eKeys.length; j++) {
+        if (eKeys[j].indexOf('__vueParentComponent') === 0) {
+          var comp = allEl[i][eKeys[j]];
+          searchComponentData(comp, oldVal, newVal);
+          if (diag.modified > 0) return;
+          var sub = comp.subTree;
+          if (sub && sub.component) {
+            searchComponentData(sub.component, oldVal, newVal);
+            if (diag.modified > 0) return;
+          }
+        }
+      }
     }
 
-    try {
-      var pinia = app.config.globalProperties.$pinia;
-      if (pinia) {
-        diag.piniaFound = true;
-        var stores = pinia._s;
-        if (stores) {
-          stores.forEach(function(store, storeName) {
+    if (appResult) {
+      try {
+        var pinia = appResult.app.config.globalProperties.$pinia;
+        if (pinia && pinia._s) {
+          diag.instanceInfo.piniaFound = true;
+          pinia._s.forEach(function(store) {
             if (diag.modified > 0) return;
             var keys = Object.keys(store);
             for (var ki = 0; ki < keys.length; ki++) {
-              var key = keys[ki];
               try {
-                var val = store[key];
+                var val = store[keys[ki]];
                 if (Array.isArray(val)) {
                   for (var ri = 0; ri < val.length; ri++) {
                     if (typeof val[ri] === 'object' && val[ri] !== null) {
@@ -148,8 +149,6 @@
                       for (var pi = 0; pi < props.length; pi++) {
                         if (tryModifyValue(val[ri], props[pi], oldVal, newVal)) return;
                       }
-                    } else {
-                      if (tryModifyValue(val, ri, oldVal, newVal)) return;
                     }
                   }
                 }
@@ -157,34 +156,29 @@
             }
           });
         }
-      }
-    } catch(e) {}
+      } catch(e) {}
+    }
   }
 
   function setCell(cell, text) {
     var ins = cell.querySelectorAll('input');
     var sels = cell.querySelectorAll('select');
     var tas = cell.querySelectorAll('textarea');
-
     if (ins.length > 0) {
       for (var i = 0; i < ins.length; i++) {
         ins[i].focus();
         var ns = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
-        if (ns && ns.set) ns.set.call(ins[i], text);
-        else ins[i].value = text;
+        if (ns && ns.set) ns.set.call(ins[i], text); else ins[i].value = text;
         ins[i].dispatchEvent(new Event('input', { bubbles: true }));
         ins[i].dispatchEvent(new Event('change', { bubbles: true }));
       }
     } else if (sels.length > 0) {
       for (var i = 0; i < sels.length; i++) {
         var found = false;
-        for (var j = 0; j < sels[i].options.length; j++) {
-          if (sels[i].options[j].textContent.trim() === text || sels[i].options[j].value === text) { found = true; break; }
-        }
+        for (var j = 0; j < sels[i].options.length; j++) { if (sels[i].options[j].textContent.trim() === text || sels[i].options[j].value === text) { found = true; break; } }
         if (!found) { var o = document.createElement('option'); o.value = text; o.textContent = text; sels[i].appendChild(o); }
         var setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
-        if (setter && setter.set) setter.set.call(sels[i], text);
-        else sels[i].value = text;
+        if (setter && setter.set) setter.set.call(sels[i], text); else sels[i].value = text;
         sels[i].dispatchEvent(new Event('input', { bubbles: true }));
         sels[i].dispatchEvent(new Event('change', { bubbles: true }));
       }
@@ -192,27 +186,16 @@
       for (var i = 0; i < tas.length; i++) {
         tas[i].focus();
         var ns = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
-        if (ns && ns.set) ns.set.call(tas[i], text);
-        else tas[i].value = text;
+        if (ns && ns.set) ns.set.call(tas[i], text); else tas[i].value = text;
         tas[i].dispatchEvent(new Event('input', { bubbles: true }));
         tas[i].dispatchEvent(new Event('change', { bubbles: true }));
       }
     } else {
       var spans = cell.querySelectorAll('span');
       var oldText = cell.textContent.trim();
-      if (spans.length > 0) {
-        for (var i = 0; i < spans.length; i++) {
-          if (spans[i].textContent.trim() === oldText) {
-            spans[i].textContent = text;
-          }
-        }
-      } else {
-        cell.textContent = text;
-      }
-      var app = findVue3App();
-      if (app) {
-        findAndModifyVue3Data(app, oldText, text);
-      }
+      if (spans.length > 0) { for (var i = 0; i < spans.length; i++) { if (spans[i].textContent.trim() === oldText) spans[i].textContent = text; } }
+      else { cell.textContent = text; }
+      findAndModifyViaDOM(oldText, text);
     }
   }
 
@@ -223,18 +206,13 @@
     if (!table) { var allT = document.querySelectorAll('table'); table = allT.length > 0 ? allT[0] : null; }
     if (!table) return { ok: false, err: 'table not found', diag: diag };
     diag.foundElement = true;
-    if (newHeaders.length > 0) {
-      var hc = table.querySelectorAll('thead th, thead td');
-      for (var i = 0; i < newHeaders.length && i < hc.length; i++) setCell(hc[i], newHeaders[i]);
-    }
+    if (newHeaders.length > 0) { var hc = table.querySelectorAll('thead th, thead td'); for (var i = 0; i < newHeaders.length && i < hc.length; i++) setCell(hc[i], newHeaders[i]); }
     var tbody = table.querySelector('tbody');
     if (!tbody) { tbody = document.createElement('tbody'); table.appendChild(tbody); }
     var erows = tbody.querySelectorAll(':scope > tr');
     var cc = newHeaders.length || (newRows[0] ? newRows[0].length : 1);
     for (var ri = 0; ri < newRows.length; ri++) {
-      var tr;
-      if (ri < erows.length) tr = erows[ri];
-      else { tr = document.createElement('tr'); for (var c = 0; c < cc; c++) { var td = document.createElement('td'); tr.appendChild(td); } tbody.appendChild(tr); }
+      var tr; if (ri < erows.length) tr = erows[ri]; else { tr = document.createElement('tr'); for (var c = 0; c < cc; c++) { var td = document.createElement('td'); tr.appendChild(td); } tbody.appendChild(tr); }
       var cells = tr.querySelectorAll('td, th');
       for (var ci = 0; ci < newRows[ri].length && ci < cells.length; ci++) setCell(cells[ci], newRows[ri][ci]);
     }
@@ -247,10 +225,7 @@
     if (!list) return { ok: false, err: 'list not found', diag: diag };
     diag.foundElement = true;
     var eitems = list.querySelectorAll(':scope > li');
-    for (var i = 0; i < newItems.length; i++) {
-      if (i < eitems.length) setCell(eitems[i], newItems[i]);
-      else { var li = document.createElement('li'); li.textContent = newItems[i]; list.appendChild(li); }
-    }
+    for (var i = 0; i < newItems.length; i++) { if (i < eitems.length) setCell(eitems[i], newItems[i]); else { var li = document.createElement('li'); li.textContent = newItems[i]; list.appendChild(li); } }
   }
 
   return { ok: true, diag: diag };
