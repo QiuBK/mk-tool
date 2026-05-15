@@ -241,24 +241,86 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       chrome.scripting.executeScript({
         target: { tabId },
         func: (id: string, newHeaders: string[], newRows: string[][]) => {
-          const table = document.querySelector(`table[data-devtoolkit-id="${id}"]`)
+          const table = document.querySelector(`table[data-devtoolkit-id="${id}"]`) as HTMLTableElement | null
           if (!table) return { ok: false, msg: `找不到标记为${id}的表格` }
+
+          function setCellContent(cell: Element, text: string) {
+            const inputs = cell.querySelectorAll('input')
+            const selects = cell.querySelectorAll('select')
+            const textareas = cell.querySelectorAll('textarea')
+            if (inputs.length > 0) {
+              inputs.forEach((input) => {
+                input.value = text
+                input.setAttribute('value', text)
+                input.dispatchEvent(new Event('input', { bubbles: true }))
+                input.dispatchEvent(new Event('change', { bubbles: true }))
+              })
+            }
+            if (selects.length > 0) {
+              selects.forEach((sel) => {
+                const options = sel.querySelectorAll('option')
+                options.forEach((opt) => {
+                  if (opt.textContent?.trim() === text || opt.value === text) {
+                    opt.selected = true
+                    opt.setAttribute('selected', 'selected')
+                  }
+                })
+                sel.value = text
+                sel.dispatchEvent(new Event('change', { bubbles: true }))
+              })
+            }
+            if (textareas.length > 0) {
+              textareas.forEach((ta) => {
+                ta.value = text
+                ta.textContent = text
+                ta.dispatchEvent(new Event('input', { bubbles: true }))
+                ta.dispatchEvent(new Event('change', { bubbles: true }))
+              })
+            }
+            if (inputs.length === 0 && selects.length === 0 && textareas.length === 0) {
+              cell.textContent = text
+            }
+          }
 
           if (newHeaders.length > 0) {
             const headerCells = table.querySelectorAll('thead th, thead td')
             newHeaders.forEach((text, i) => {
-              if (i < headerCells.length) headerCells[i].textContent = text
+              if (i < headerCells.length) setCellContent(headerCells[i], text)
             })
           }
-          const bodyRows = table.querySelectorAll('tbody tr')
+
+          let tbody = table.querySelector('tbody')
+          if (!tbody) {
+            tbody = document.createElement('tbody')
+            table.appendChild(tbody)
+          }
+          const existingRows = tbody.querySelectorAll(':scope > tr')
+          const colCount = newHeaders.length || (newRows[0]?.length || 1)
+
           newRows.forEach((rowData, ri) => {
-            if (ri < bodyRows.length) {
-              const cells = bodyRows[ri].querySelectorAll('td, th')
-              rowData.forEach((text, ci) => {
-                if (ci < cells.length) cells[ci].textContent = text
-              })
+            let tr: HTMLTableRowElement
+            if (ri < existingRows.length) {
+              tr = existingRows[ri] as HTMLTableRowElement
+            } else {
+              tr = document.createElement('tr')
+              for (let c = 0; c < colCount; c++) {
+                const td = document.createElement('td')
+                tr.appendChild(td)
+              }
+              tbody!.appendChild(tr)
             }
+            const cells = tr.querySelectorAll('td, th')
+            rowData.forEach((text, ci) => {
+              if (ci < cells.length) {
+                setCellContent(cells[ci], text)
+              }
+            })
           })
+
+          for (let ri = existingRows.length - 1; ri >= newRows.length; ri--) {
+            existingRows[ri].remove()
+          }
+
           return { ok: true }
         },
         args: [domId, headers, rows],
@@ -287,13 +349,56 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       chrome.scripting.executeScript({
         target: { tabId },
         func: (id: string, newItems: string[]) => {
-          const list = document.querySelector(`ul[data-devtoolkit-id="${id}"], ol[data-devtoolkit-id="${id}"]`)
+          const list = document.querySelector(`ul[data-devtoolkit-id="${id}"], ol[data-devtoolkit-id="${id}"]`) as HTMLUListElement | HTMLOListElement | null
           if (!list) return { ok: false, msg: `找不到标记为${id}的列表` }
 
-          const listItems = list.querySelectorAll(':scope > li')
+          function setItemContent(li: Element, text: string) {
+            const inputs = li.querySelectorAll('input')
+            const selects = li.querySelectorAll('select')
+            const textareas = li.querySelectorAll('textarea')
+            if (inputs.length > 0) {
+              inputs.forEach((input) => {
+                input.value = text
+                input.setAttribute('value', text)
+                input.dispatchEvent(new Event('input', { bubbles: true }))
+                input.dispatchEvent(new Event('change', { bubbles: true }))
+              })
+            }
+            if (selects.length > 0) {
+              selects.forEach((sel) => {
+                sel.value = text
+                sel.dispatchEvent(new Event('change', { bubbles: true }))
+              })
+            }
+            if (textareas.length > 0) {
+              textareas.forEach((ta) => {
+                ta.value = text
+                ta.textContent = text
+                ta.dispatchEvent(new Event('input', { bubbles: true }))
+                ta.dispatchEvent(new Event('change', { bubbles: true }))
+              })
+            }
+            if (inputs.length === 0 && selects.length === 0 && textareas.length === 0) {
+              li.textContent = text
+            }
+          }
+
+          const existingItems = list.querySelectorAll(':scope > li')
+
           newItems.forEach((text, i) => {
-            if (i < listItems.length) listItems[i].textContent = text
+            if (i < existingItems.length) {
+              setItemContent(existingItems[i], text)
+            } else {
+              const li = document.createElement('li')
+              li.textContent = text
+              list.appendChild(li)
+            }
           })
+
+          for (let i = existingItems.length - 1; i >= newItems.length; i--) {
+            existingItems[i].remove()
+          }
+
           return { ok: true }
         },
         args: [domId, items],
