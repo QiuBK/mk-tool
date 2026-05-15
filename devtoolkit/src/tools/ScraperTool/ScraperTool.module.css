@@ -70,6 +70,15 @@
   border-radius: var(--radius-sm);
 }
 
+.paginationMsg {
+  font-size: 12px;
+  padding: 8px;
+  background: rgba(52, 152, 219, 0.1);
+  color: #2980b9;
+  border-radius: var(--radius-sm);
+  word-break: break-all;
+}
+
 .results {
   display: flex;
   flex-direction: column;

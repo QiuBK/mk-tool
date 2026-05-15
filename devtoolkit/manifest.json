@@ -24,7 +24,7 @@
     "default_title": "DevToolKit"
   },
   "web_accessible_resources": [{
-    "resources": ["content/sync.js"],
+    "resources": ["content/sync.js", "content/expand-pagination.js"],
     "matches": ["<all_urls>"]
   }]
 }

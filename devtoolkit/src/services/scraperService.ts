@@ -69,17 +69,35 @@ function scrapePageFn() {
   return { tables: extractTables(), lists: extractLists(), url: location.href, title: document.title }
 }
 
-export async function expandPagination(): Promise<number> {
-  if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) return 0
+export interface ExpandPaginationResult {
+  count: number
+  info: string
+  debug: string
+  storeInfo: string
+  compSamples: string
+  domInfo: string
+}
+
+export async function expandPagination(): Promise<ExpandPaginationResult> {
+  if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) {
+    return { count: 0, info: '', debug: '', storeInfo: '', compSamples: '', domInfo: '' }
+  }
   return new Promise((resolve) => {
     chrome.runtime.sendMessage({ type: 'expandPagination' }, (response) => {
-      if (chrome.runtime.lastError) { resolve(0); return }
-      resolve(response?.count || 0)
+      if (chrome.runtime.lastError) {
+        resolve({ count: 0, info: '', debug: '', storeInfo: '', compSamples: '', domInfo: '' })
+        return
+      }
+      resolve(response || { count: 0, info: '', debug: '', storeInfo: '', compSamples: '', domInfo: '' })
     })
   })
 }
 
-export async function scrapeCurrentPage(): Promise<ScrapeResult> {
+export interface ScrapeResultWithPagination extends ScrapeResult {
+  paginationResult?: ExpandPaginationResult
+}
+
+export async function scrapeCurrentPage(): Promise<ScrapeResultWithPagination> {
   if (typeof chrome === 'undefined' || !chrome.tabs || !chrome.scripting) {
     throw new Error('此功能仅在浏览器扩展中可用')
   }
@@ -94,25 +112,27 @@ export async function scrapeCurrentPage(): Promise<ScrapeResult> {
   }
 
   try {
-    await expandPagination()
+    const paginationResult = await expandPagination()
     await new Promise(r => setTimeout(r, 1500))
-  } catch {}
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: scrapePageFn,
+    })
 
-  const results = await chrome.scripting.executeScript({
-    target: { tabId: tab.id },
-    func: scrapePageFn,
-  })
+    if (!results || results.length === 0 || !results[0].result) {
+      throw new Error('未能在页面中提取到数据')
+    }
 
-  if (!results || results.length === 0 || !results[0].result) {
-    throw new Error('未能在页面中提取到数据')
+    const data = results[0].result as ScrapeResultWithPagination
+    if (data.tables.length === 0 && data.lists.length === 0) {
+      throw new Error('当前页面未找到表格或列表数据')
+    }
+
+    data.paginationResult = paginationResult
+    return data
+  } catch {
+    throw new Error('页面数据提取失败')
   }
-
-  const data = results[0].result as ScrapeResult
-  if (data.tables.length === 0 && data.lists.length === 0) {
-    throw new Error('当前页面未找到表格或列表数据')
-  }
-
-  return data
 }
 
 export function tableToText(table: ScrapedTable): string {

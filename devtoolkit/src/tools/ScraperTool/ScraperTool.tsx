@@ -23,14 +23,28 @@ export function ScraperTool() {
   const [replayError, setReplayError] = useState('')
   const [capturing, setCapturing] = useState(false)
   const [captureError, setCaptureError] = useState('')
+  const [paginationMsg, setPaginationMsg] = useState('')
 
   const handleScrape = async () => {
     setLoading(true)
     setError('')
+    setPaginationMsg('')
     try {
       const data = await scrapeCurrentPage()
       setResult(data)
       setActiveTab(data.tables.length > 0 ? 'tables' : 'lists')
+      if (data.paginationResult) {
+        const pr = data.paginationResult
+        if (pr.count > 0) {
+          setPaginationMsg(`📄 分页展开: 修改${pr.count}项 ${pr.info ? '(' + pr.info + ')' : ''}`)
+        } else {
+          const parts: string[] = []
+          if (pr.storeInfo) parts.push('Store: ' + pr.storeInfo.split('\n').slice(0, 3).join('; '))
+          if (pr.domInfo) parts.push('DOM: ' + pr.domInfo)
+          if (pr.debug) parts.push(pr.debug)
+          setPaginationMsg(`📄 分页展开: 未找到分页属性 ${parts.length > 0 ? '(' + parts.join(' | ') + ')' : ''}`)
+        }
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : '提取失败')
     } finally {
@@ -310,6 +324,7 @@ export function ScraperTool() {
       )}
       {captureError && <div className={styles.error}>{captureError}</div>}
       {error && <div className={styles.error}>{error}</div>}
+      {paginationMsg && <div className={styles.paginationMsg}>{paginationMsg}</div>}
 
       {(result || activeTab === 'api' || capturing || apiRequests.length > 0) && (
         <div className={styles.results}>

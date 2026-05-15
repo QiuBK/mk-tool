@@ -231,7 +231,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message.type === 'expandPagination') {
     getActiveTabId().then(async (tabId) => {
-      if (!tabId) { sendResponse({ count: 0 }); return }
+      if (!tabId) { sendResponse({ count: 0, info: 'no tab', debug: '' }); return }
       const wasAttached = debuggerTabs.has(tabId)
       try {
         if (!wasAttached) {
@@ -245,10 +245,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             })
           })
         }
-        const expandCode = `(function(){var count=0;function findApp(){var el=document.getElementById('app');if(el&&el.__vue_app__)return el.__vue_app__;var all=document.querySelectorAll('*');for(var i=0;i<all.length;i++){if(all[i].__vue_app__)return all[i].__vue_app__;}return null;}function deepSetPageSize(obj,depth){if(!obj||typeof obj!=='object'||depth>10)return;try{var keys;try{keys=Object.getOwnPropertyNames(obj);}catch(e){keys=Object.keys(obj);}for(var i=0;i<keys.length;i++){var key=keys[i];if(key.startsWith('_')||key.startsWith('$')||key==='constructor'||key==='prototype'||key==='__proto__')continue;try{var val=obj[key];if(typeof val==='number'&&(key==='pageSize'||key==='limit'||key==='size'||key==='perPage'||key==='page_size'||key==='rowsPerPage'||key==='itemCount'||key==='total'||key==='num')){if(val<9999){obj[key]=9999;count++;}}if(typeof val==='object'&&val!==null&&!Array.isArray(val)&&!(val instanceof HTMLElement)&&!(val instanceof Node)){deepSetPageSize(val,depth+1);}}catch(e){}}}catch(e){}}var app=findApp();if(app){try{var pinia=app.config.globalProperties.$pinia;if(pinia&&pinia._s){pinia._s.forEach(function(store){try{var state=store.$state;if(state)deepSetPageSize(state,0);}catch(e){}try{deepSetPageSize(store,0);}catch(e){}});}}catch(e){}try{var rootComp=null;if(app._instance)rootComp=app._instance;else if(app._container&&app._container._vnode&&app._container._vnode.component)rootComp=app._container._vnode.component;if(rootComp){var all=[];function collect(inst,d){if(!inst||d>25)return;all.push(inst);var st=inst.subTree;if(!st)return;if(st.component)collect(st.component,d+1);if(Array.isArray(st.children)){for(var i=0;i<st.children.length;i++){if(st.children[i]&&st.children[i].component)collect(st.children[i].component,d+1);}}if(st.dynamicChildren){for(var i=0;i<st.dynamicChildren.length;i++){if(st.dynamicChildren[i]&&st.dynamicChildren[i].component)collect(st.dynamicChildren[i].component,d+1);}}}collect(rootComp,0);for(var ci=0;ci<all.length;ci++){var comp=all[ci];try{if(comp.setupState)deepSetPageSize(comp.setupState,0);}catch(e){}try{if(comp.proxy&&comp.proxy.$data)deepSetPageSize(comp.proxy.$data,0);}catch(e){}}}}catch(e){}}return count;})()`
+        const expandJsCode = await (await fetch(chrome.runtime.getURL('content/expand-pagination.js'))).text()
         const result = await new Promise<any>((resolve, reject) => {
           chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
-            expression: expandCode,
+            expression: expandJsCode,
             returnByValue: true,
           }, (res: any) => {
             if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message))
@@ -264,15 +264,23 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             })
           })
         }
-        const count = result?.result?.value || 0
-        sendResponse({ count })
+        const val = result?.result?.value
+        const count = val?.count || 0
+        const found = val?.found ? val.found.join('; ') : ''
+        const debug = val?.debug ? val.debug.join('; ') : ''
+        const storeInfo = val?.storeInfo ? val.storeInfo.map((s: any) => s.name + ':[' + (s.keys || []).join(',') + ']' + (s.sample ? ' ' + s.sample : '')).join('\n') : ''
+        const compSamples = val?.compSamples ? val.compSamples.map((s: any) => '[' + (s.keys || []).join(',') + ']').join('; ') : ''
+        const domInfo = val?.domInfo ? val.domInfo.map((d: any) => d.classes + ':' + (d.actions || []).join(',')).join('; ') : ''
+        let info = found
+        if (!info && debug) info = 'debug:' + debug
+        sendResponse({ count, info, debug, storeInfo, compSamples, domInfo })
       } catch (e: any) {
         if (debuggerTabs.has(tabId)) {
           try { chrome.debugger.detach({ tabId }, () => { debuggerTabs.delete(tabId); if (debuggerTabs.size === 0) stopKeepalive() }) } catch {}
         }
-        sendResponse({ count: 0 })
+        sendResponse({ count: 0, info: e.message, debug: '', storeInfo: '', compSamples: '', domInfo: '' })
       }
-    }).catch(() => { sendResponse({ count: 0 }) })
+    }).catch(() => { sendResponse({ count: 0, info: 'no tab', debug: '', storeInfo: '', compSamples: '', domInfo: '' }) })
     return true
   }
 
