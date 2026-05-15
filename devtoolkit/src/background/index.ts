@@ -286,24 +286,25 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       }
       const val = result?.result?.value
       if (val && val.ok === false) {
-        return { success: false, error: (val.err || '同步失败') + (val.diag ? ` [框架:${val.diag.framework}]` : '') }
+        return { success: false, error: (val.err || '同步失败') + (val.diag ? ` [Vue:${val.diag.vueInfo ? val.diag.vueInfo.version : 'none'}]` : '') }
       } else if (val && val.ok === true && val.diag) {
         const d = val.diag
-        let info = `框架:${d.framework}`
-        if (d.selects.length > 0) {
-          for (const s of d.selects) {
-            info += ` | select:设为"${s.setTo}"后值="${s.afterValue}"`
-            if (s.before) info += ` tracker:${s.before.hasValueTracker} fiber:${s.before.reactFiberFound} onChange:${s.before.onChangeFound} options:[${s.before.optionValues.join(',')}]`
-          }
+        let info = `Vue:${d.vueInfo ? 'v' + d.vueInfo.version : 'none'}`
+        if (d.vueInfo && d.vueInfo.dataKeys) info += ` dataKeys:[${d.vueInfo.dataKeys.slice(0, 5).join(',')}]`
+        if (d.vueInfo && d.vueInfo.setupKeys) info += ` setupKeys:[${d.vueInfo.setupKeys.slice(0, 5).join(',')}]`
+        const vueCells = d.cellInfo.filter((c: any) => c.hasVue)
+        const modifiedCells = d.cellInfo.filter((c: any) => c.vueModified)
+        info += ` cells:${d.cellInfo.length} vueCells:${vueCells.length} modified:${modifiedCells.length}`
+        if (modifiedCells.length > 0) {
+          info += ` paths:[${modifiedCells.slice(0, 3).map((c: any) => c.vuePath).join(',')}]`
         }
-        if (d.inputs.length > 0) {
-          for (const s of d.inputs) {
-            info += ` | input:设为"${s.setTo}"后值="${s.afterValue}"`
-          }
-        }
+        const selectCells = d.cellInfo.filter((c: any) => c.hasSelect)
+        const inputCells = d.cellInfo.filter((c: any) => c.hasInput)
+        if (selectCells.length > 0) info += ` selects:${selectCells.length}`
+        if (inputCells.length > 0) info += ` inputs:${inputCells.length}`
         return { success: true, info }
       } else {
-        return { success: true, info: JSON.stringify(val) }
+        return { success: true, info: JSON.stringify(val).substring(0, 200) }
       }
     } catch (e: any) {
       if (debuggerTabs.has(tabId)) {

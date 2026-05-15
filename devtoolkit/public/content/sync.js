@@ -8,108 +8,170 @@
   var itemsStr = el.getAttribute('data-items') || '[]';
   el.remove();
 
-  var diag = { type: type, id: id, foundElement: false, selects: [], inputs: [], framework: 'unknown' };
+  var diag = { type: type, id: id, foundElement: false, vueInfo: null, cellInfo: [] };
 
-  function detectFramework() {
-    if (document.querySelector('[data-reactroot]') || document.getElementById('root') || document.getElementById('__next')) return 'react';
-    if (document.querySelector('[data-v-]') || document.getElementById('app') || document.querySelector('[data-server-rendered]')) return 'vue';
-    var allEl = document.querySelectorAll('*');
-    for (var i = 0; i < Math.min(allEl.length, 50); i++) {
-      var keys = Object.keys(allEl[i]);
-      for (var j = 0; j < keys.length; j++) {
-        if (keys[j].indexOf('__reactFiber') === 0) return 'react';
-        if (keys[j].indexOf('__vue__') === 0) return 'vue';
-      }
+  function findVueInstance(el) {
+    var current = el;
+    while (current && current !== document.body) {
+      if (current.__vue__) return { version: 2, instance: current.__vue__, el: current };
+      if (current.__vueParentComponent) return { version: 3, instance: current.__vueParentComponent, el: current };
+      current = current.parentElement;
     }
-    return 'unknown';
+    return null;
   }
-  diag.framework = detectFramework();
 
-  function inspectSelect(sel) {
-    var info = {
-      tagName: sel.tagName,
-      currentValue: sel.value,
-      optionCount: sel.options.length,
-      optionValues: [],
-      optionTexts: [],
-      hasValueTracker: !!sel._valueTracker,
-      reactFiberFound: false,
-      onChangeFound: false,
-      parentTag: sel.parentElement ? sel.parentElement.tagName : 'none'
-    };
-    for (var i = 0; i < sel.options.length; i++) {
-      info.optionValues.push(sel.options[i].value);
-      info.optionTexts.push(sel.options[i].textContent.trim());
-    }
-    var keys = Object.keys(sel);
-    for (var i = 0; i < keys.length; i++) {
-      if (keys[i].indexOf('__reactFiber') === 0 || keys[i].indexOf('__reactInternalInstance') === 0) {
-        info.reactFiberFound = true;
-        var fiber = sel[keys[i]];
-        while (fiber) {
-          var p = fiber.memoizedProps || fiber.pendingProps;
-          if (p) {
-            if (typeof p.onChange === 'function') { info.onChangeFound = true; break; }
-            if (typeof p.onInput === 'function') { info.onChangeFound = true; break; }
+  function inspectVueData(vmInfo) {
+    if (!vmInfo) return null;
+    var info = { version: vmInfo.version, dataKeys: [], hasTable: false };
+    try {
+      if (vmInfo.version === 2) {
+        var vm = vmInfo.instance;
+        info.dataKeys = Object.keys(vm.$data || {});
+        for (var i = 0; i < info.dataKeys.length; i++) {
+          var key = info.dataKeys[i];
+          var val = vm.$data[key];
+          if (Array.isArray(val)) {
+            info[key + '_length'] = val.length;
+            if (val.length > 0 && typeof val[0] === 'object') {
+              info[key + '_sampleKeys'] = Object.keys(val[0]).slice(0, 10);
+            }
           }
-          fiber = fiber.return;
         }
-        break;
+      } else if (vmInfo.version === 3) {
+        var vm = vmInfo.instance;
+        var proxy = vm.proxy;
+        if (proxy) {
+          info.dataKeys = Object.keys(proxy.$data || proxy);
+          for (var i = 0; i < info.dataKeys.length; i++) {
+            var key = info.dataKeys[i];
+            var val = proxy[key];
+            if (Array.isArray(val)) {
+              info[key + '_length'] = val.length;
+              if (val.length > 0 && typeof val[0] === 'object') {
+                info[key + '_sampleKeys'] = Object.keys(val[0]).slice(0, 10);
+              }
+            }
+          }
+        }
+        if (vm.setupState) {
+          info.setupKeys = Object.keys(vm.setupState).slice(0, 20);
+          for (var i = 0; i < Math.min(info.setupKeys.length, 10); i++) {
+            var key = info.setupKeys[i];
+            var val = vm.setupState[key];
+            if (Array.isArray(val)) {
+              info[key + '_length'] = val.length;
+              if (val.length > 0 && typeof val[0] === 'object') {
+                info[key + '_sampleKeys'] = Object.keys(val[0]).slice(0, 10);
+              }
+            }
+          }
+        }
       }
-    }
+    } catch(e) { info.error = e.message; }
     return info;
   }
 
-  function setVal(el, val) {
-    el.focus();
-    if (el.tagName === 'SELECT') {
-      var found = false;
-      for (var i = 0; i < el.options.length; i++) {
-        if (el.options[i].textContent.trim() === val || el.options[i].value === val) { found = true; break; }
-      }
-      if (!found) {
-        var o = document.createElement('option');
-        o.value = val; o.textContent = val;
-        el.appendChild(o);
-      }
-      var setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
-      if (setter && setter.set) setter.set.call(el, val);
-      else el.value = val;
-      if (el._valueTracker) el._valueTracker.setValue('');
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-      el.dispatchEvent(new Event('change', { bubbles: true }));
-      diag.selects.push({ before: inspectSelect(el), setTo: val, afterValue: el.value });
-    } else {
-      el.focus();
-      var ns = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
-      if (ns && ns.set) ns.set.call(el, '');
-      else el.value = '';
-      if (el._valueTracker) el._valueTracker.setValue('');
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-      el.select();
-      var ok = false;
-      try { document.execCommand('selectAll'); } catch(e) {}
-      try { ok = document.execCommand('insertText', false, val); } catch(e) {}
-      if (!ok) {
-        if (ns && ns.set) ns.set.call(el, val);
-        else el.value = val;
-        if (el._valueTracker) el._valueTracker.setValue('');
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-      }
-      el.dispatchEvent(new Event('change', { bubbles: true }));
-      diag.inputs.push({ setTo: val, afterValue: el.value });
-    }
-    el.dispatchEvent(new Event('blur', { bubbles: true }));
-  }
-
   function setCell(cell, text) {
+    var cellDiag = { text: text, hasInput: false, hasSelect: false, hasVue: false, vueModified: false };
     var ins = cell.querySelectorAll('input');
     var sels = cell.querySelectorAll('select');
     var tas = cell.querySelectorAll('textarea');
-    for (var i = 0; i < ins.length; i++) setVal(ins[i], text);
-    for (var i = 0; i < sels.length; i++) setVal(sels[i], text);
-    for (var i = 0; i < tas.length; i++) setVal(tas[i], text);
-    if (!ins.length && !sels.length && !tas.length) cell.textContent = text;
+    cellDiag.hasInput = ins.length > 0;
+    cellDiag.hasSelect = sels.length > 0;
+
+    if (ins.length > 0) {
+      for (var i = 0; i < ins.length; i++) {
+        ins[i].focus();
+        var ns = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+        if (ns && ns.set) ns.set.call(ins[i], text);
+        else ins[i].value = text;
+        ins[i].dispatchEvent(new Event('input', { bubbles: true }));
+        ins[i].dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    }
+    if (sels.length > 0) {
+      for (var i = 0; i < sels.length; i++) {
+        var found = false;
+        for (var j = 0; j < sels[i].options.length; j++) {
+          if (sels[i].options[j].textContent.trim() === text || sels[i].options[j].value === text) { found = true; break; }
+        }
+        if (!found) { var o = document.createElement('option'); o.value = text; o.textContent = text; sels[i].appendChild(o); }
+        var setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+        if (setter && setter.set) setter.set.call(sels[i], text);
+        else sels[i].value = text;
+        sels[i].dispatchEvent(new Event('input', { bubbles: true }));
+        sels[i].dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    }
+    if (tas.length > 0) {
+      for (var i = 0; i < tas.length; i++) {
+        tas[i].focus();
+        var ns = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+        if (ns && ns.set) ns.set.call(tas[i], text);
+        else tas[i].value = text;
+        tas[i].dispatchEvent(new Event('input', { bubbles: true }));
+        tas[i].dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    }
+
+    if (!ins.length && !sels.length && !tas.length) {
+      cell.textContent = text;
+
+      var vmInfo = findVueInstance(cell);
+      if (vmInfo) {
+        cellDiag.hasVue = true;
+        try {
+          if (vmInfo.version === 2) {
+            var vm = vmInfo.instance;
+            var data = vm.$data;
+            for (var key in data) {
+              if (!data.hasOwnProperty(key)) continue;
+              var val = data[key];
+              if (Array.isArray(val)) {
+                for (var ri = 0; ri < val.length; ri++) {
+                  if (typeof val[ri] === 'object') {
+                    for (var prop in val[ri]) {
+                      if (String(val[ri][prop]) === cell.textContent || String(val[ri][prop]) === text) {
+                        vm.$set(val[ri], prop, text);
+                        cellDiag.vueModified = true;
+                        cellDiag.vuePath = key + '[' + ri + '].' + prop;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          } else if (vmInfo.version === 3) {
+            var vm = vmInfo.instance;
+            var proxy = vm.proxy;
+            var dataSources = [];
+            if (vm.setupState) dataSources.push(vm.setupState);
+            if (proxy) dataSources.push(proxy);
+            for (var di = 0; di < dataSources.length; di++) {
+              var ds = dataSources[di];
+              for (var key in ds) {
+                if (!ds.hasOwnProperty(key)) continue;
+                var val = ds[key];
+                if (Array.isArray(val)) {
+                  for (var ri = 0; ri < val.length; ri++) {
+                    if (typeof val[ri] === 'object') {
+                      for (var prop in val[ri]) {
+                        if (String(val[ri][prop]) === text) {
+                          val[ri][prop] = text;
+                          cellDiag.vueModified = true;
+                          cellDiag.vuePath = key + '[' + ri + '].' + prop;
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        } catch(e) { cellDiag.vueError = e.message; }
+      }
+    }
+    diag.cellInfo.push(cellDiag);
   }
 
   if (type === 'table') {
@@ -119,6 +181,10 @@
     if (!table) { var allT = document.querySelectorAll('table'); table = allT.length > 0 ? allT[0] : null; }
     if (!table) return { ok: false, err: 'table not found', diag: diag };
     diag.foundElement = true;
+
+    var vmInfo = findVueInstance(table);
+    diag.vueInfo = inspectVueData(vmInfo);
+
     if (newHeaders.length > 0) {
       var hc = table.querySelectorAll('thead th, thead td');
       for (var i = 0; i < newHeaders.length && i < hc.length; i++) setCell(hc[i], newHeaders[i]);
@@ -142,6 +208,10 @@
     if (!list) { var allL = document.querySelectorAll('ul, ol'); list = allL.length > 0 ? allL[0] : null; }
     if (!list) return { ok: false, err: 'list not found', diag: diag };
     diag.foundElement = true;
+
+    var vmInfo = findVueInstance(list);
+    diag.vueInfo = inspectVueData(vmInfo);
+
     var eitems = list.querySelectorAll(':scope > li');
     for (var i = 0; i < newItems.length; i++) {
       if (i < eitems.length) setCell(eitems[i], newItems[i]);
