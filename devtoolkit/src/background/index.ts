@@ -131,8 +131,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         chrome.windows.remove(popupWindowId)
         popupWindowId = null
       }
-      getActiveTabId().then((tabId) => {
-        if (tabId) chrome.sidePanel.open({ tabId })
+      chrome.windows.getLastFocused({ windowTypes: ['normal'] }, (win) => {
+        if (win.id) {
+          chrome.tabs.query({ active: true, windowId: win.id }, (tabs) => {
+            if (tabs[0]?.id) {
+              chrome.sidePanel.open({ tabId: tabs[0].id })
+            }
+          })
+        }
       })
     }
     sendResponse({ ok: true })
