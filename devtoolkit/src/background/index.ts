@@ -93,22 +93,6 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   }
 })
 
-function persistDebuggerTabs() {
-  chrome.storage.session.set({ 'devtoolkit-debugger-tabs': Array.from(debuggerTabs) })
-}
-
-function restoreDebuggerTabs() {
-  chrome.storage.session.get('devtoolkit-debugger-tabs', (result) => {
-    const tabs = result['devtoolkit-debugger-tabs'] as number[] | undefined
-    if (tabs) {
-      tabs.forEach((t) => debuggerTabs.add(t))
-      if (debuggerTabs.size > 0) startKeepalive()
-    }
-  })
-}
-
-restoreDebuggerTabs()
-
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'setDisplayMode') {
     const mode = message.mode as string
@@ -149,25 +133,21 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message.type === 'startCapture') {
     const tabId = message.tabId as number
-    if (debuggerTabs.has(tabId)) {
-      sendResponse({ ok: true })
-      return true
-    }
     chrome.debugger.attach({ tabId }, '1.3', () => {
       if (chrome.runtime.lastError) {
         const msg = chrome.runtime.lastError.message || ''
         if (msg.includes('already attached')) {
           debuggerTabs.add(tabId)
-          persistDebuggerTabs()
           startKeepalive()
-          sendResponse({ ok: true })
+          chrome.debugger.sendCommand({ tabId }, 'Network.enable', {}, () => {
+            sendResponse({ ok: true })
+          })
           return
         }
         sendResponse({ ok: false, error: msg })
         return
       }
       debuggerTabs.add(tabId)
-      persistDebuggerTabs()
       startKeepalive()
       chrome.debugger.sendCommand({ tabId }, 'Network.enable', {}, () => {
         if (chrome.runtime.lastError) {
@@ -184,7 +164,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     const tabId = message.tabId as number
     chrome.debugger.detach({ tabId }, () => {
       debuggerTabs.delete(tabId)
-      persistDebuggerTabs()
       if (debuggerTabs.size === 0) stopKeepalive()
       sendResponse({ ok: true })
     })
@@ -193,7 +172,15 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message.type === 'isDebuggerAttached') {
     const tabId = message.tabId as number
-    sendResponse({ attached: debuggerTabs.has(tabId) })
+    chrome.debugger.getTargets((targets) => {
+      const attached = targets.some((t: any) => t.id === String(tabId) && t.attached)
+      if (attached) {
+        debuggerTabs.add(tabId)
+      } else {
+        debuggerTabs.delete(tabId)
+      }
+      sendResponse({ attached })
+    })
     return true
   }
 
@@ -356,7 +343,6 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
 chrome.debugger.onDetach.addListener((source) => {
   if (source.tabId) {
     debuggerTabs.delete(source.tabId)
-    persistDebuggerTabs()
     if (debuggerTabs.size === 0) stopKeepalive()
   }
 })
@@ -365,7 +351,6 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   capturedRequests.delete(tabId)
   if (debuggerTabs.has(tabId)) {
     debuggerTabs.delete(tabId)
-    persistDebuggerTabs()
     if (debuggerTabs.size === 0) stopKeepalive()
   }
 })
