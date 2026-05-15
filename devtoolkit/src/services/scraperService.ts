@@ -163,14 +163,13 @@ export async function exportTableToExcel(table: ScrapedTable, fileName?: string)
 }
 
 export async function syncTableToPage(tableIndex: number, headers: string[], rows: string[][]): Promise<void> {
-  if (typeof chrome === 'undefined' || !chrome.tabs || !chrome.scripting) return
+  if (typeof chrome === 'undefined' || !chrome.scripting) return
 
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-  if (!tab?.id) return
-  if (tab.url?.startsWith('chrome://') || tab.url?.startsWith('edge://') || tab.url?.startsWith('about:')) return
+  const tabId = await getActiveTabId()
+  if (!tabId) return
 
   await chrome.scripting.executeScript({
-    target: { tabId: tab.id },
+    target: { tabId },
     world: 'MAIN',
     func: (idx: number, newHeaders: string[], newRows: string[][]) => {
       const tables = document.querySelectorAll('table')
@@ -213,14 +212,13 @@ export async function syncTableToPage(tableIndex: number, headers: string[], row
 }
 
 export async function syncListToPage(listIndex: number, items: string[]): Promise<void> {
-  if (typeof chrome === 'undefined' || !chrome.tabs || !chrome.scripting) return
+  if (typeof chrome === 'undefined' || !chrome.scripting) return
 
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-  if (!tab?.id) return
-  if (tab.url?.startsWith('chrome://') || tab.url?.startsWith('edge://') || tab.url?.startsWith('about:')) return
+  const tabId = await getActiveTabId()
+  if (!tabId) return
 
   await chrome.scripting.executeScript({
-    target: { tabId: tab.id },
+    target: { tabId },
     world: 'MAIN',
     func: (idx: number, newItems: string[]) => {
       const lists = document.querySelectorAll('ul, ol')

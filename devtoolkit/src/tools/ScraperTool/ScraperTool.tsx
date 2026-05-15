@@ -618,11 +618,18 @@ function TableCard({ table, index }: { table: ScrapedTable; index: number }) {
   const [editing, setEditing] = useState(false)
   const [headers, setHeaders] = useState<string[]>([...table.headers])
   const [rows, setRows] = useState<string[][]>(table.rows.map(r => [...r]))
+  const [syncVersion, setSyncVersion] = useState(0)
   const maxPreviewRows = 5
   const previewRows = expanded ? rows : rows.slice(0, maxPreviewRows)
   const hasMore = rows.length > maxPreviewRows
 
   const currentTable: ScrapedTable = { ...table, headers, rows }
+
+  useEffect(() => {
+    if (editing && syncVersion > 0) {
+      syncTableToPage(index, headers, rows)
+    }
+  }, [syncVersion])
 
   const handleCopyCsv = () => {
     navigator.clipboard.writeText(tableToCsv(currentTable))
@@ -639,26 +646,23 @@ function TableCard({ table, index }: { table: ScrapedTable; index: number }) {
     setRows(prev => {
       const next = prev.map(r => [...r])
       next[rowIdx][colIdx] = value
-      syncTableToPage(index, headers, next)
       return next
     })
+    setSyncVersion(v => v + 1)
   }
 
   const handleHeaderChange = (colIdx: number, value: string) => {
     setHeaders(prev => {
       const next = [...prev]
       next[colIdx] = value
-      syncTableToPage(index, next, rows)
       return next
     })
+    setSyncVersion(v => v + 1)
   }
 
   const handleDeleteRow = (rowIdx: number) => {
-    setRows(prev => {
-      const next = prev.filter((_, i) => i !== rowIdx)
-      syncTableToPage(index, headers, next)
-      return next
-    })
+    setRows(prev => prev.filter((_, i) => i !== rowIdx))
+    setSyncVersion(v => v + 1)
   }
 
   const handleAddRow = () => {
@@ -746,24 +750,28 @@ function TableCard({ table, index }: { table: ScrapedTable; index: number }) {
 function ListCard({ list, index }: { list: ScrapedList; index: number }) {
   const [editing, setEditing] = useState(false)
   const [items, setItems] = useState<string[]>([...list.items])
+  const [syncVersion, setSyncVersion] = useState(0)
 
   const currentList: ScrapedList = { ...list, items }
+
+  useEffect(() => {
+    if (editing && syncVersion > 0) {
+      syncListToPage(index, items)
+    }
+  }, [syncVersion])
 
   const handleItemChange = (idx: number, value: string) => {
     setItems(prev => {
       const next = [...prev]
       next[idx] = value
-      syncListToPage(index, next)
       return next
     })
+    setSyncVersion(v => v + 1)
   }
 
   const handleDeleteItem = (idx: number) => {
-    setItems(prev => {
-      const next = prev.filter((_, i) => i !== idx)
-      syncListToPage(index, next)
-      return next
-    })
+    setItems(prev => prev.filter((_, i) => i !== idx))
+    setSyncVersion(v => v + 1)
   }
 
   const handleAddItem = () => {
