@@ -229,6 +229,94 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true
   }
 
+  if (message.type === 'syncTableToPage') {
+    const tableIndex = message.tableIndex as number
+    const headers = message.headers as string[]
+    const rows = message.rows as string[][]
+    getActiveTabId().then((tabId) => {
+      if (!tabId) {
+        sendResponse({ success: false, error: '无法获取标签页' })
+        return
+      }
+      chrome.scripting.executeScript({
+        target: { tabId },
+        func: (idx: number, newHeaders: string[], newRows: string[][]) => {
+          const tables = document.querySelectorAll('table')
+          if (idx >= tables.length) return { ok: false, msg: `找不到第${idx + 1}个表格(共${tables.length}个)` }
+          const table = tables[idx]
+          if (newHeaders.length > 0) {
+            const headerCells = table.querySelectorAll('thead th, thead td')
+            newHeaders.forEach((text, i) => {
+              if (i < headerCells.length) headerCells[i].textContent = text
+            })
+          }
+          const bodyRows = table.querySelectorAll('tbody tr')
+          newRows.forEach((rowData, ri) => {
+            if (ri < bodyRows.length) {
+              const cells = bodyRows[ri].querySelectorAll('td, th')
+              rowData.forEach((text, ci) => {
+                if (ci < cells.length) cells[ci].textContent = text
+              })
+            }
+          })
+          return { ok: true }
+        },
+        args: [tableIndex, headers, rows],
+      }).then((results) => {
+        const result = results?.[0]?.result as any
+        if (result && !result.ok) {
+          sendResponse({ success: false, error: result.msg })
+        } else {
+          sendResponse({ success: true })
+        }
+      }).catch((e) => {
+        sendResponse({ success: false, error: e.message || '脚本注入失败' })
+      })
+    })
+    return true
+  }
+
+  if (message.type === 'syncListToPage') {
+    const listIndex = message.listIndex as number
+    const items = message.items as string[]
+    getActiveTabId().then((tabId) => {
+      if (!tabId) {
+        sendResponse({ success: false, error: '无法获取标签页' })
+        return
+      }
+      chrome.scripting.executeScript({
+        target: { tabId },
+        func: (idx: number, newItems: string[]) => {
+          const lists = document.querySelectorAll('ul, ol')
+          const visibleLists: Element[] = []
+          lists.forEach((list) => {
+            if (list.closest('table, nav, header, footer, [role="navigation"]')) return
+            if (list.closest('ul, ol') && list.parentElement?.closest('ul, ol')) return
+            visibleLists.push(list)
+          })
+          if (idx >= visibleLists.length) return { ok: false, msg: `找不到第${idx + 1}个列表(共${visibleLists.length}个)` }
+          const list = visibleLists[idx]
+          const listItems = list.querySelectorAll(':scope > li')
+          newItems.forEach((text, i) => {
+            if (i < listItems.length) listItems[i].textContent = text
+          })
+          return { ok: true }
+        },
+        args: [listIndex, items],
+      }).then((results) => {
+        const result = results?.[0]?.result as any
+        if (result && !result.ok) {
+          sendResponse({ success: false, error: result.msg })
+        } else {
+          sendResponse({ success: true })
+        }
+      }).catch((e) => {
+        sendResponse({ success: false, error: e.message || '脚本注入失败' })
+      })
+    })
+    return true
+  }
+
   return false
 })
 
