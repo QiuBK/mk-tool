@@ -8,7 +8,7 @@
   var itemsStr = el.getAttribute('data-items') || '[]';
   el.remove();
 
-  var diag = { type: type, id: id, foundElement: false, modified: 0, paths: [], appKeys: [], instanceInfo: null, domVueKeys: [] };
+  var diag = { type: type, id: id, foundElement: false, modified: 0, paths: [], piniaStores: [], componentData: [] };
 
   function findVue3App() {
     var appEl = document.getElementById('app');
@@ -21,142 +21,102 @@
   }
 
   var appResult = findVue3App();
-  if (appResult) {
-    var app = appResult.app;
-    var appEl = appResult.el;
-    diag.appKeys = Object.keys(app).slice(0, 20);
-    diag.instanceInfo = {
-      hasInstance: !!app._instance,
-      instanceType: app._instance ? typeof app._instance : 'none',
-      instanceKeys: app._instance ? Object.keys(app._instance).slice(0, 15) : [],
-      hasConfig: !!app.config,
-      configKeys: app.config ? Object.keys(app.config).slice(0, 10) : [],
-      hasGlobalProperties: !!(app.config && app.config.globalProperties),
-      gpKeys: (app.config && app.config.globalProperties) ? Object.keys(app.config.globalProperties).slice(0, 10) : []
-    };
 
-    var elKeys = Object.keys(appEl);
-    for (var i = 0; i < elKeys.length; i++) {
-      if (elKeys[i].indexOf('__vue') === 0) diag.domVueKeys.push(elKeys[i] + ':' + typeof appEl[elKeys[i]]);
-    }
-
-    if (!app._instance) {
-      var root = app._container || appEl;
-      var vnode = root._vnode || root.__vue_app__ ? null : null;
-      var allEl = document.querySelectorAll('*');
-      for (var i = 0; i < Math.min(allEl.length, 500); i++) {
-        var eKeys = Object.keys(allEl[i]);
-        for (var j = 0; j < eKeys.length; j++) {
-          if (eKeys[j].indexOf('__vueParentComponent') === 0) {
-            var comp = allEl[i][eKeys[j]];
-            diag.instanceInfo.foundParentComponent = true;
-            diag.instanceInfo.pcKeys = Object.keys(comp).slice(0, 15);
-            diag.instanceInfo.pcType = typeof comp;
-            diag.instanceInfo.hasProxy = !!comp.proxy;
-            diag.instanceInfo.hasSetupState = !!comp.setupState;
-            if (comp.setupState) {
-              diag.instanceInfo.setupKeys = Object.keys(comp.setupState).slice(0, 10);
-            }
-            break;
-          }
-        }
-        if (diag.instanceInfo.foundParentComponent) break;
-      }
-    }
-  }
-
-  function tryModifyValue(obj, key, oldVal, newVal) {
+  function deepSearchAndModify(obj, oldVal, newVal, path, depth) {
+    if (!obj || typeof obj !== 'object' || depth > 5) return false;
     try {
-      var cur = obj[key];
-      if (cur === oldVal || cur === Number(oldVal) || String(cur) === String(oldVal)) {
-        var setVal = (typeof cur === 'number') ? Number(newVal) : newVal;
-        obj[key] = setVal;
-        diag.modified++;
-        diag.paths.push(key + '=' + oldVal + '->' + newVal);
-        return true;
+      var keys = Object.keys(obj);
+      for (var i = 0; i < keys.length; i++) {
+        var key = keys[i];
+        if (key.startsWith('_') || key.startsWith('__')) continue;
+        try {
+          var cur = obj[key];
+          if (cur === oldVal || cur === Number(oldVal) || String(cur) === String(oldVal)) {
+            var setVal = (typeof cur === 'number') ? Number(newVal) : newVal;
+            obj[key] = setVal;
+            diag.modified++;
+            diag.paths.push(path + '.' + key + '=' + oldVal + '->' + newVal);
+            return true;
+          }
+          if (Array.isArray(cur)) {
+            for (var ri = 0; ri < cur.length; ri++) {
+              if (typeof cur[ri] === 'object' && cur[ri] !== null) {
+                if (deepSearchAndModify(cur[ri], oldVal, newVal, path + '.' + key + '[' + ri + ']', depth + 1)) return true;
+              } else if (cur[ri] === oldVal || cur[ri] === Number(oldVal) || String(cur[ri]) === String(oldVal)) {
+                var setVal2 = (typeof cur[ri] === 'number') ? Number(newVal) : newVal;
+                cur[ri] = setVal2;
+                diag.modified++;
+                diag.paths.push(path + '.' + key + '[' + ri + ']=' + oldVal + '->' + newVal);
+                return true;
+              }
+            }
+          } else if (typeof cur === 'object' && cur !== null && !Array.isArray(cur)) {
+            if (deepSearchAndModify(cur, oldVal, newVal, path + '.' + key, depth + 1)) return true;
+          }
+        } catch(e) {}
       }
     } catch(e) {}
     return false;
   }
 
-  function searchComponentData(instance, oldVal, newVal) {
-    if (!instance) return;
-    var proxy = instance.proxy;
-    var dataSources = [];
-    try { if (instance.setupState) dataSources.push(instance.setupState); } catch(e) {}
-    try { if (proxy && proxy.$data) dataSources.push(proxy.$data); } catch(e) {}
-    try { if (proxy) dataSources.push(proxy); } catch(e) {}
-
-    for (var di = 0; di < dataSources.length; di++) {
-      var ds = dataSources[di];
-      try {
-        var keys = Object.keys(ds);
-        for (var ki = 0; ki < keys.length; ki++) {
-          var key = keys[ki];
+  function searchPinia(oldVal, newVal) {
+    if (!appResult) return;
+    try {
+      var pinia = appResult.app.config.globalProperties.$pinia;
+      if (!pinia || !pinia._s) return;
+      pinia._s.forEach(function(store, storeName) {
+        if (diag.modified > 0) return;
+        var storeInfo = { name: storeName, keys: Object.keys(store).slice(0, 15) };
+        var sampleKeys = Object.keys(store).slice(0, 5);
+        for (var si = 0; si < sampleKeys.length; si++) {
           try {
-            var val = ds[key];
-            if (Array.isArray(val)) {
-              for (var ri = 0; ri < val.length; ri++) {
-                if (typeof val[ri] === 'object' && val[ri] !== null) {
-                  var props = Object.keys(val[ri]);
-                  for (var pi = 0; pi < props.length; pi++) {
-                    if (tryModifyValue(val[ri], props[pi], oldVal, newVal)) return;
-                  }
-                } else {
-                  if (tryModifyValue(val, ri, oldVal, newVal)) return;
+            var sv = store[sampleKeys[si]];
+            if (Array.isArray(sv)) {
+              storeInfo[sampleKeys[si]] = 'Array(' + sv.length + ')';
+              if (sv.length > 0 && typeof sv[0] === 'object') {
+                storeInfo[sampleKeys[si] + '_keys'] = Object.keys(sv[0]).slice(0, 8);
+                var sampleObj = sv[0];
+                var objSample = {};
+                var objKeys = Object.keys(sampleObj).slice(0, 5);
+                for (var oi = 0; oi < objKeys.length; oi++) {
+                  objSample[objKeys[oi]] = typeof sampleObj[objKeys[oi]] + ':' + String(sampleObj[objKeys[oi]]).substring(0, 20);
                 }
+                storeInfo[sampleKeys[si] + '_sample'] = objSample;
               }
+            } else {
+              storeInfo[sampleKeys[si]] = typeof sv + ':' + String(sv).substring(0, 30);
             }
           } catch(e) {}
         }
-      } catch(e) {}
-    }
+        diag.piniaStores.push(storeInfo);
+        deepSearchAndModify(store, oldVal, newVal, storeName, 0);
+      });
+    } catch(e) { diag.piniaError = e.message; }
   }
 
-  function findAndModifyViaDOM(oldVal, newVal) {
-    var allEl = document.querySelectorAll('*');
-    for (var i = 0; i < allEl.length; i++) {
-      var eKeys = Object.keys(allEl[i]);
-      for (var j = 0; j < eKeys.length; j++) {
-        if (eKeys[j].indexOf('__vueParentComponent') === 0) {
-          var comp = allEl[i][eKeys[j]];
-          searchComponentData(comp, oldVal, newVal);
-          if (diag.modified > 0) return;
-          var sub = comp.subTree;
-          if (sub && sub.component) {
-            searchComponentData(sub.component, oldVal, newVal);
-            if (diag.modified > 0) return;
-          }
+  function searchComponentTree(oldVal, newVal) {
+    if (!appResult) return;
+    var app = appResult.app;
+    var container = app._container;
+    if (container && container._vnode && container._vnode.component) {
+      var rootComp = container._vnode.component;
+      var proxy = rootComp.proxy;
+      if (proxy) {
+        var dataSources = [];
+        try { if (rootComp.setupState) dataSources.push({ name: 'setupState', data: rootComp.setupState }); } catch(e) {}
+        try { if (proxy.$data) dataSources.push({ name: '$data', data: proxy.$data }); } catch(e) {}
+        try { dataSources.push({ name: 'proxy', data: proxy }); } catch(e) {}
+        for (var di = 0; di < dataSources.length; di++) {
+          var dsInfo = { source: dataSources[di].name, keys: Object.keys(dataSources[di].data).slice(0, 10) };
+          diag.componentData.push(dsInfo);
+          if (deepSearchAndModify(dataSources[di].data, oldVal, newVal, dataSources[di].name, 0)) return;
         }
       }
     }
-
-    if (appResult) {
-      try {
-        var pinia = appResult.app.config.globalProperties.$pinia;
-        if (pinia && pinia._s) {
-          diag.instanceInfo.piniaFound = true;
-          pinia._s.forEach(function(store) {
-            if (diag.modified > 0) return;
-            var keys = Object.keys(store);
-            for (var ki = 0; ki < keys.length; ki++) {
-              try {
-                var val = store[keys[ki]];
-                if (Array.isArray(val)) {
-                  for (var ri = 0; ri < val.length; ri++) {
-                    if (typeof val[ri] === 'object' && val[ri] !== null) {
-                      var props = Object.keys(val[ri]);
-                      for (var pi = 0; pi < props.length; pi++) {
-                        if (tryModifyValue(val[ri], props[pi], oldVal, newVal)) return;
-                      }
-                    }
-                  }
-                }
-              } catch(e) {}
-            }
-          });
-        }
-      } catch(e) {}
+    var context = app._context;
+    if (context) {
+      var ctxKeys = Object.keys(context).slice(0, 10);
+      diag.componentData.push({ source: '_context', keys: ctxKeys });
     }
   }
 
@@ -195,7 +155,8 @@
       var oldText = cell.textContent.trim();
       if (spans.length > 0) { for (var i = 0; i < spans.length; i++) { if (spans[i].textContent.trim() === oldText) spans[i].textContent = text; } }
       else { cell.textContent = text; }
-      findAndModifyViaDOM(oldText, text);
+      searchPinia(oldText, text);
+      if (diag.modified === 0) searchComponentTree(oldText, text);
     }
   }
 

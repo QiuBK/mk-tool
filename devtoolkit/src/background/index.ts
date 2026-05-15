@@ -291,16 +291,18 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         const d = val.diag
         let info = `修改:${d.modified}项`
         if (d.paths.length > 0) info += ` [${d.paths.slice(0, 3).join(',')}]`
-        const ii = d.instanceInfo
-        if (ii) {
-          info += ` _instance:${ii.hasInstance}`
-          if (ii.foundParentComponent) info += ` PC:是 proxy:${ii.hasProxy} setup:${ii.hasSetupState}`
-          if (ii.setupKeys) info += ` setupKeys:[${ii.setupKeys.join(',')}]`
-          if (ii.pcKeys) info += ` pcKeys:[${ii.pcKeys.slice(0, 5).join(',')}]`
-          if (ii.piniaFound) info += ' Pinia:是'
+        if (d.piniaStores.length > 0) {
+          const ps = d.piniaStores[0]
+          info += ` Pinia:${ps.name} keys:[${ps.keys.slice(0, 5).join(',')}]`
+          const sampleKey = Object.keys(ps).find(k => k !== 'name' && k !== 'keys' && !k.endsWith('_keys') && !k.endsWith('_sample'))
+          if (sampleKey) info += ` ${sampleKey}=${ps[sampleKey]}`
+          const sampleKeys2 = Object.keys(ps).filter(k => k.endsWith('_sample'))
+          if (sampleKeys2.length > 0) info += ` sample:${JSON.stringify(ps[sampleKeys2[0]]).substring(0, 80)}`
         }
-        info += ` appKeys:[${d.appKeys.slice(0, 5).join(',')}]`
-        if (d.domVueKeys.length > 0) info += ` domKeys:[${d.domVueKeys.join(',')}]`
+        if (d.componentData.length > 0) {
+          const cd = d.componentData[0]
+          info += ` comp:${cd.source} keys:[${cd.keys.slice(0, 5).join(',')}]`
+        }
         return { success: true, info }
       } else {
         return { success: true, info: JSON.stringify(val).substring(0, 300) }
