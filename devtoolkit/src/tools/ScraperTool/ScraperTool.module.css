@@ -438,6 +438,36 @@
   gap: 8px;
 }
 
+.captureBtnMain {
+  background: #49cc90;
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 8px 16px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.captureBtnMain:hover {
+  opacity: 0.9;
+}
+
+.stopCaptureBtnMain {
+  background: #f93e3e;
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 8px 16px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.stopCaptureBtnMain:hover {
+  opacity: 0.9;
+}
+
 .captureBtn {
   background: #49cc90;
   color: #fff;

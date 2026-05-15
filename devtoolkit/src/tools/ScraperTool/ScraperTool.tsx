@@ -73,12 +73,14 @@ export function ScraperTool() {
           const res = await startCapture(tab.id)
           if (res.ok) {
             setCapturing(true)
+            setActiveTab('api')
           } else {
             const errMsg = res.error || '无法开始抓包'
             if (errMsg.includes('Cannot access') || errMsg.includes('permission')) {
               setCaptureError('权限不足：请确保扩展有调试权限，且目标页面未打开 DevTools')
             } else if (errMsg.includes('already attached')) {
               setCapturing(true)
+              setActiveTab('api')
             } else {
               setCaptureError(`抓包启动失败：${errMsg}`)
             }
@@ -296,18 +298,30 @@ export function ScraperTool() {
         <button className={styles.scrapeBtn} onClick={handleScrape} disabled={loading}>
           {loading ? '提取中...' : '🔍 抓取页面数据'}
         </button>
-        <button className={styles.scrapeBtn} onClick={() => setActiveTab('api')} style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}>
-          🌐 接口抓包
-        </button>
+        {!capturing ? (
+          <button className={styles.captureBtnMain} onClick={handleStartCapture}>
+            🌐 开始抓包
+          </button>
+        ) : (
+          <button className={styles.stopCaptureBtnMain} onClick={handleStopCapture}>
+            ⏹ 停止抓包
+          </button>
+        )}
         {(result || apiRequests.length > 0) && activeTab !== 'api' && (
           <button className={styles.copyAllBtn} onClick={handleCopyAll}>
             📋 复制全部
           </button>
         )}
       </div>
+      {capturing && (
+        <div className={styles.captureStatus}>
+          🔴 正在监听 XHR/Fetch 请求...（页面顶部会出现「扩展正在调试此浏览器」提示栏，请勿关闭）
+        </div>
+      )}
+      {captureError && <div className={styles.error}>{captureError}</div>}
       {error && <div className={styles.error}>{error}</div>}
 
-      {(result || activeTab === 'api') && (
+      {(result || activeTab === 'api' || capturing || apiRequests.length > 0) && (
         <div className={styles.results}>
           <div className={styles.tabs}>
             <button className={`${styles.tab} ${activeTab === 'tables' ? styles.tabActive : ''}`} onClick={() => setActiveTab('tables')}>
@@ -356,12 +370,6 @@ export function ScraperTool() {
                 )}
                 <button className={styles.smallBtn} onClick={handleClearApi}>🗑 清空</button>
               </div>
-              {capturing && (
-                <div className={styles.captureStatus}>
-                  🔴 正在监听 XHR/Fetch 请求...（页面顶部会出现「扩展正在调试此浏览器」提示栏，请勿关闭）
-                </div>
-              )}
-              {captureError && <div className={styles.error}>{captureError}</div>}
               {apiRequests.length === 0 ? (
                 <div className={styles.apiEmpty}>
                   {!capturing ? (
