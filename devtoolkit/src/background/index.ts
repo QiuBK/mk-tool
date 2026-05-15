@@ -229,64 +229,87 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true
   }
 
+  async function runSyncScript(tabId: number, syncType: string, syncId: string, data: Record<string, string>) {
+    const wasAttached = debuggerTabs.has(tabId)
+    if (!wasAttached) {
+      await new Promise<void>((resolve, reject) => {
+        chrome.debugger.attach({ tabId }, '1.3', () => {
+          if (chrome.runtime.lastError) {
+            const msg = chrome.runtime.lastError.message || ''
+            if (msg.includes('already attached')) { debuggerTabs.add(tabId); resolve() }
+            else reject(new Error(msg))
+          } else { debuggerTabs.add(tabId); resolve() }
+        })
+      })
+    }
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        func: (sType: string, sId: string, sData: Record<string, string>) => {
+          var existing = document.getElementById('__devtoolkit_sync__')
+          if (existing) existing.remove()
+          var el = document.createElement('devtoolkit-sync')
+          el.id = '__devtoolkit_sync__'
+          el.style.display = 'none'
+          el.setAttribute('data-type', sType)
+          el.setAttribute('data-id', sId)
+          for (var k in sData) { if (sData.hasOwnProperty(k)) el.setAttribute('data-' + k, sData[k]) }
+          document.body.appendChild(el)
+        },
+        args: [syncType, syncId, data],
+      })
+    } catch {
+      if (!wasAttached && debuggerTabs.has(tabId)) {
+        try { chrome.debugger.detach({ tabId }, () => { debuggerTabs.delete(tabId); if (debuggerTabs.size === 0) stopKeepalive() }) } catch {}
+      }
+      throw new Error('写入DOM数据失败')
+    }
+    try {
+    const syncJsCode = `(function(){var el=document.getElementById('__devtoolkit_sync__');if(!el)return{ok:false,err:'no sync element'};var type=el.getAttribute('data-type');var id=el.getAttribute('data-id')||'';var headersStr=el.getAttribute('data-headers')||'[]';var rowsStr=el.getAttribute('data-rows')||'[]';var itemsStr=el.getAttribute('data-items')||'[]';el.remove();var _g=false;function persistSelect(se,dv){function ef(){if(_g)return;_g=true;try{var f=false;for(var i=0;i<se.options.length;i++){if(se.options[i].value===dv){f=true;break;}}if(!f){var o=document.createElement('option');o.value=dv;o.textContent=dv;se.appendChild(o);}if(se.value!==dv){var s=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value');if(s&&s.set)s.set.call(se,dv);else se.value=dv;}}catch(e){}_g=false;}ef();var obs=new MutationObserver(function(){ef();});obs.observe(se,{childList:true,subtree:true,attributes:true,attributeFilter:['value','selected']});setTimeout(function(){obs.disconnect();},60000);}function setVal(el,val){el.focus();if(el.tagName==='SELECT'){var found=false;for(var i=0;i<el.options.length;i++){if(el.options[i].textContent.trim()===val||el.options[i].value===val){found=true;break;}}if(!found){var o=document.createElement('option');o.value=val;o.textContent=val;el.appendChild(o);}var setter=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value');if(setter&&setter.set)setter.set.call(el,val);else el.value=val;if(el._valueTracker)el._valueTracker.setValue('');el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));persistSelect(el,val);}else{el.focus();var ns=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value');if(ns&&ns.set)ns.set.call(el,'');else el.value='';if(el._valueTracker)el._valueTracker.setValue('');el.dispatchEvent(new Event('input',{bubbles:true}));el.select();var ok=false;try{document.execCommand('selectAll');}catch(e){}try{ok=document.execCommand('insertText',false,val);}catch(e){}if(!ok){if(ns&&ns.set)ns.set.call(el,val);else el.value=val;if(el._valueTracker)el._valueTracker.setValue('');el.dispatchEvent(new Event('input',{bubbles:true}));}el.dispatchEvent(new Event('change',{bubbles:true}));}el.dispatchEvent(new Event('blur',{bubbles:true}));}function setCell(cell,text){var ins=cell.querySelectorAll('input');var sels=cell.querySelectorAll('select');var tas=cell.querySelectorAll('textarea');for(var i=0;i<ins.length;i++)setVal(ins[i],text);for(var i=0;i<sels.length;i++)setVal(sels[i],text);for(var i=0;i<tas.length;i++)setVal(tas[i],text);if(!ins.length&&!sels.length&&!tas.length)cell.textContent=text;}var info={found:false,headers:0,rows:0,selects:0,inputs:0,items:0};if(type==='table'){var nH=JSON.parse(headersStr);var nR=JSON.parse(rowsStr);var table=document.querySelector('table[data-devtoolkit-id="'+id+'"]');if(!table){var aT=document.querySelectorAll('table');table=aT.length>0?aT[0]:null;}if(!table)return{ok:false,err:'table not found: '+id};info.found=true;if(nH.length>0){var hc=table.querySelectorAll('thead th, thead td');for(var i=0;i<nH.length&&i<hc.length;i++){setCell(hc[i],nH[i]);info.headers++;}}var tbody=table.querySelector('tbody');if(!tbody){tbody=document.createElement('tbody');table.appendChild(tbody);}var er=tbody.querySelectorAll(':scope > tr');var cc=nH.length||(nR[0]?nR[0].length:1);for(var ri=0;ri<nR.length;ri++){var tr;if(ri<er.length)tr=er[ri];else{tr=document.createElement('tr');for(var c=0;c<cc;c++){var td=document.createElement('td');tr.appendChild(td);}tbody.appendChild(tr);}var cells=tr.querySelectorAll('td, th');for(var ci=0;ci<nR[ri].length&&ci<cells.length;ci++){setCell(cells[ci],nR[ri][ci]);info.selects+=cells[ci].querySelectorAll('select').length;info.inputs+=cells[ci].querySelectorAll('input').length;}info.rows++;}for(var ri=er.length-1;ri>=nR.length;ri--)er[ri].remove();}if(type==='list'){var nI=JSON.parse(itemsStr);var list=document.querySelector('ul[data-devtoolkit-id="'+id+'"], ol[data-devtoolkit-id="'+id+'"]');if(!list){var aL=document.querySelectorAll('ul, ol');list=aL.length>0?aL[0]:null;}if(!list)return{ok:false,err:'list not found: '+id};info.found=true;var ei=list.querySelectorAll(':scope > li');for(var i=0;i<nI.length;i++){if(i<ei.length)setCell(ei[i],nI[i]);else{var li=document.createElement('li');li.textContent=nI[i];list.appendChild(li);}info.items++;}for(var i=ei.length-1;i>=nI.length;i--)ei[i].remove();}return info;})()`
+      const result = await new Promise<any>((resolve, reject) => {
+        chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+          expression: syncJsCode,
+          returnByValue: true,
+        }, (res: any) => {
+          if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message))
+          else resolve(res)
+        })
+      })
+      if (!wasAttached) {
+        await new Promise<void>((resolve) => {
+          chrome.debugger.detach({ tabId }, () => {
+            debuggerTabs.delete(tabId)
+            if (debuggerTabs.size === 0) stopKeepalive()
+            resolve()
+          })
+        })
+      }
+      const val = result?.result?.value
+      if (val && val.ok === false) {
+        return { success: false, error: val.err || '同步失败' }
+      } else if (val && val.found) {
+        const detail = val.selects > 0 ? `找到表格,更新${val.rows}行${val.headers}列,${val.selects}个select,${val.inputs}个input` : `找到表格,更新${val.rows}行${val.headers}列`
+        return { success: true, info: detail }
+      } else {
+        return { success: true }
+      }
+    } catch (e: any) {
+      if (debuggerTabs.has(tabId)) {
+        try { chrome.debugger.detach({ tabId }, () => { debuggerTabs.delete(tabId); if (debuggerTabs.size === 0) stopKeepalive() }) } catch {}
+      }
+      return { success: false, error: e.message || '同步失败' }
+    }
+  }
+
   if (message.type === 'syncTableToPage') {
     const domId = message.domId as string
     const headers = message.headers as string[]
     const rows = message.rows as string[][]
     getActiveTabId().then(async (tabId) => {
-      if (!tabId) {
-        sendResponse({ success: false, error: '无法获取标签页' })
-        return
-      }
-      const wasAttached = debuggerTabs.has(tabId)
-      try {
-        if (!wasAttached) {
-          await new Promise<void>((resolve, reject) => {
-            chrome.debugger.attach({ tabId }, '1.3', () => {
-              if (chrome.runtime.lastError) {
-                const msg = chrome.runtime.lastError.message || ''
-                if (msg.includes('already attached')) { debuggerTabs.add(tabId); resolve() }
-                else reject(new Error(msg))
-              } else { debuggerTabs.add(tabId); resolve() }
-            })
-          })
-        }
-        const syncExpr = `(function(){try{var id=${JSON.stringify(domId)};var newHeaders=${JSON.stringify(headers)};var newRows=${JSON.stringify(rows)};var table=document.querySelector('table[data-devtoolkit-id="'+id+'"]');if(!table){var allTables=document.querySelectorAll('table');table=allTables.length>0?allTables[0]:null;}if(!table)return{ok:false,err:'table not found: '+id};function findHandler(el){var keys=Object.keys(el);for(var i=0;i<keys.length;i++){if(keys[i].indexOf('__reactFiber')===0||keys[i].indexOf('__reactInternalInstance')===0){var fiber=el[keys[i]];while(fiber){var p=fiber.memoizedProps||fiber.pendingProps;if(p){if(typeof p.onChange==='function')return p.onChange;if(typeof p.onInput==='function')return p.onInput;}fiber=fiber.return;}}}if(el.__vue__){var vm=el.__vue__;if(typeof vm.$emit==='function')return function(e){vm.$emit('input',e.target.value);vm.$emit('change',e.target.value);};}if(el.__vueParentComponent){var vc=el.__vueParentComponent;if(vc&&vc.emit)return function(e){vc.emit('update:modelValue',e.target.value);vc.emit('change',e.target.value);};}return null;}function setVal(el,val){el.focus();if(el.tagName==='SELECT'){var found=false;for(var i=0;i<el.options.length;i++){if(el.options[i].textContent.trim()===val||el.options[i].value===val){found=true;break;}}if(!found){var o=document.createElement('option');o.value=val;o.textContent=val;el.appendChild(o);}var setter=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value');if(setter&&setter.set)setter.set.call(el,val);else el.value=val;if(el._valueTracker)el._valueTracker.setValue('');var handler=findHandler(el);if(handler){try{handler({target:el,currentTarget:el,type:'change'});}catch(e){}}el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));}else{el.focus();var ns=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value');if(ns&&ns.set)ns.set.call(el,'');else el.value='';if(el._valueTracker)el._valueTracker.setValue('');el.dispatchEvent(new Event('input',{bubbles:true}));el.select();var ok=false;try{document.execCommand('selectAll');}catch(e){}try{ok=document.execCommand('insertText',false,val);}catch(e){}if(!ok){if(ns&&ns.set)ns.set.call(el,val);else el.value=val;if(el._valueTracker)el._valueTracker.setValue('');var handler=findHandler(el);if(handler){try{handler({target:el,currentTarget:el,type:'change'});}catch(e){}}el.dispatchEvent(new Event('input',{bubbles:true}));}}el.dispatchEvent(new Event('change',{bubbles:true}));el.dispatchEvent(new Event('blur',{bubbles:true}));}function setCell(cell,text){var ins=cell.querySelectorAll('input');var sels=cell.querySelectorAll('select');var tas=cell.querySelectorAll('textarea');for(var i=0;i<ins.length;i++)setVal(ins[i],text);for(var i=0;i<sels.length;i++)setVal(sels[i],text);for(var i=0;i<tas.length;i++)setVal(tas[i],text);if(!ins.length&&!sels.length&&!tas.length)cell.textContent=text;}var info={found:true,headers:0,rows:0,selects:0,inputs:0};if(newHeaders.length>0){var hc=table.querySelectorAll('thead th, thead td');for(var i=0;i<newHeaders.length&&i<hc.length;i++){setCell(hc[i],newHeaders[i]);info.headers++;}}var tbody=table.querySelector('tbody');if(!tbody){tbody=document.createElement('tbody');table.appendChild(tbody);}var erows=tbody.querySelectorAll(':scope > tr');var cc=newHeaders.length||(newRows[0]?newRows[0].length:1);for(var ri=0;ri<newRows.length;ri++){var tr;if(ri<erows.length)tr=erows[ri];else{tr=document.createElement('tr');for(var c=0;c<cc;c++){var td=document.createElement('td');tr.appendChild(td);}tbody.appendChild(tr);}var cells=tr.querySelectorAll('td, th');for(var ci=0;ci<newRows[ri].length&&ci<cells.length;ci++){setCell(cells[ci],newRows[ri][ci]);info.selects+=cells[ci].querySelectorAll('select').length;info.inputs+=cells[ci].querySelectorAll('input').length;}info.rows++;}for(var ri=erows.length-1;ri>=newRows.length;ri--)erows[ri].remove();return info;}catch(e){return{ok:false,err:e.message||String(e)};}})()`
-        const result = await new Promise<any>((resolve, reject) => {
-          chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
-            expression: syncExpr,
-            returnByValue: true,
-          }, (res: any) => {
-            if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message))
-            else resolve(res)
-          })
-        })
-        if (!wasAttached) {
-          await new Promise<void>((resolve) => {
-            chrome.debugger.detach({ tabId }, () => {
-              debuggerTabs.delete(tabId)
-              if (debuggerTabs.size === 0) stopKeepalive()
-              resolve()
-            })
-          })
-        }
-        const val = result?.result?.value
-        if (val && val.ok === false) {
-          sendResponse({ success: false, error: val.err || '同步失败' })
-        } else if (val && val.found) {
-          sendResponse({ success: true, info: `找到表格,更新${val.rows}行${val.headers}列,${val.selects}个select,${val.inputs}个input` })
-        } else {
-          sendResponse({ success: true })
-        }
-      } catch (e: any) {
-        if (debuggerTabs.has(tabId)) {
-          try { chrome.debugger.detach({ tabId }, () => { debuggerTabs.delete(tabId); if (debuggerTabs.size === 0) stopKeepalive() }) } catch {}
-        }
-        sendResponse({ success: false, error: e.message || '同步失败' })
-      }
-    }).catch(() => {
-      sendResponse({ success: false, error: '无法获取标签页' })
-    })
+      if (!tabId) { sendResponse({ success: false, error: '无法获取标签页' }); return }
+      const result = await runSyncScript(tabId, 'table', domId, { headers: JSON.stringify(headers), rows: JSON.stringify(rows) })
+      sendResponse(result)
+    }).catch(() => { sendResponse({ success: false, error: '无法获取标签页' }) })
     return true
   }
 
@@ -294,59 +317,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     const domId = message.domId as string
     const items = message.items as string[]
     getActiveTabId().then(async (tabId) => {
-      if (!tabId) {
-        sendResponse({ success: false, error: '无法获取标签页' })
-        return
-      }
-      const wasAttached = debuggerTabs.has(tabId)
-      try {
-        if (!wasAttached) {
-          await new Promise<void>((resolve, reject) => {
-            chrome.debugger.attach({ tabId }, '1.3', () => {
-              if (chrome.runtime.lastError) {
-                const msg = chrome.runtime.lastError.message || ''
-                if (msg.includes('already attached')) { debuggerTabs.add(tabId); resolve() }
-                else reject(new Error(msg))
-              } else { debuggerTabs.add(tabId); resolve() }
-            })
-          })
-        }
-        const syncExpr = `(function(){try{var id=${JSON.stringify(domId)};var newItems=${JSON.stringify(items)};var list=document.querySelector('ul[data-devtoolkit-id="'+id+'"], ol[data-devtoolkit-id="'+id+'"]');if(!list){var allLists=document.querySelectorAll('ul, ol');list=allLists.length>0?allLists[0]:null;}if(!list)return{ok:false,err:'list not found: '+id};function findHandler(el){var keys=Object.keys(el);for(var i=0;i<keys.length;i++){if(keys[i].indexOf('__reactFiber')===0||keys[i].indexOf('__reactInternalInstance')===0){var fiber=el[keys[i]];while(fiber){var p=fiber.memoizedProps||fiber.pendingProps;if(p){if(typeof p.onChange==='function')return p.onChange;if(typeof p.onInput==='function')return p.onInput;}fiber=fiber.return;}}}if(el.__vue__){var vm=el.__vue__;if(typeof vm.$emit==='function')return function(e){vm.$emit('input',e.target.value);vm.$emit('change',e.target.value);};}if(el.__vueParentComponent){var vc=el.__vueParentComponent;if(vc&&vc.emit)return function(e){vc.emit('update:modelValue',e.target.value);vc.emit('change',e.target.value);};}return null;}function setVal(el,val){el.focus();if(el.tagName==='SELECT'){var found=false;for(var i=0;i<el.options.length;i++){if(el.options[i].textContent.trim()===val||el.options[i].value===val){found=true;break;}}if(!found){var o=document.createElement('option');o.value=val;o.textContent=val;el.appendChild(o);}var setter=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value');if(setter&&setter.set)setter.set.call(el,val);else el.value=val;if(el._valueTracker)el._valueTracker.setValue('');var handler=findHandler(el);if(handler){try{handler({target:el,currentTarget:el,type:'change'});}catch(e){}}el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));}else{el.focus();var ns=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value');if(ns&&ns.set)ns.set.call(el,'');else el.value='';if(el._valueTracker)el._valueTracker.setValue('');el.dispatchEvent(new Event('input',{bubbles:true}));el.select();var ok=false;try{document.execCommand('selectAll');}catch(e){}try{ok=document.execCommand('insertText',false,val);}catch(e){}if(!ok){if(ns&&ns.set)ns.set.call(el,val);else el.value=val;if(el._valueTracker)el._valueTracker.setValue('');var handler=findHandler(el);if(handler){try{handler({target:el,currentTarget:el,type:'change'});}catch(e){}}el.dispatchEvent(new Event('input',{bubbles:true}));}}el.dispatchEvent(new Event('change',{bubbles:true}));el.dispatchEvent(new Event('blur',{bubbles:true}));}function setItem(li,text){var ins=li.querySelectorAll('input');var sels=li.querySelectorAll('select');var tas=li.querySelectorAll('textarea');for(var i=0;i<ins.length;i++)setVal(ins[i],text);for(var i=0;i<sels.length;i++)setVal(sels[i],text);for(var i=0;i<tas.length;i++)setVal(tas[i],text);if(!ins.length&&!sels.length&&!tas.length)li.textContent=text;}var info={found:true,items:0};var eitems=list.querySelectorAll(':scope > li');for(var i=0;i<newItems.length;i++){if(i<eitems.length)setItem(eitems[i],newItems[i]);else{var li=document.createElement('li');li.textContent=newItems[i];list.appendChild(li);}info.items++;}for(var i=eitems.length-1;i>=newItems.length;i--)eitems[i].remove();return info;}catch(e){return{ok:false,err:e.message||String(e)};}})()`
-        const result = await new Promise<any>((resolve, reject) => {
-          chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
-            expression: syncExpr,
-            returnByValue: true,
-          }, (res: any) => {
-            if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message))
-            else resolve(res)
-          })
-        })
-        if (!wasAttached) {
-          await new Promise<void>((resolve) => {
-            chrome.debugger.detach({ tabId }, () => {
-              debuggerTabs.delete(tabId)
-              if (debuggerTabs.size === 0) stopKeepalive()
-              resolve()
-            })
-          })
-        }
-        const val = result?.result?.value
-        if (val && val.ok === false) {
-          sendResponse({ success: false, error: val.err || '同步失败' })
-        } else if (val && val.found) {
-          sendResponse({ success: true, info: `找到列表,更新${val.items}项` })
-        } else {
-          sendResponse({ success: true })
-        }
-      } catch (e: any) {
-        if (debuggerTabs.has(tabId)) {
-          try { chrome.debugger.detach({ tabId }, () => { debuggerTabs.delete(tabId); if (debuggerTabs.size === 0) stopKeepalive() }) } catch {}
-        }
-        sendResponse({ success: false, error: e.message || '同步失败' })
-      }
-    }).catch(() => {
-      sendResponse({ success: false, error: '无法获取标签页' })
-    })
+      if (!tabId) { sendResponse({ success: false, error: '无法获取标签页' }); return }
+      const result = await runSyncScript(tabId, 'list', domId, { items: JSON.stringify(items) })
+      sendResponse(result)
+    }).catch(() => { sendResponse({ success: false, error: '无法获取标签页' }) })
     return true
   }
 
