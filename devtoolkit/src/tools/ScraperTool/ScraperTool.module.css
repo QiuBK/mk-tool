@@ -235,6 +235,28 @@
   white-space: nowrap;
 }
 
+.cellInput {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  padding: 2px 4px;
+  font-size: 11px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.cellInput:focus {
+  border-color: var(--color-primary);
+}
+
+.cellAction {
+  padding: 3px 4px !important;
+  width: 28px;
+  text-align: center;
+}
+
 .dataTable tr:hover td {
   background: var(--color-bg-hover);
 }
@@ -252,6 +274,25 @@
   padding: 2px 0;
   border-bottom: 1px solid var(--color-border);
   word-break: break-all;
+}
+
+.listItemEdit {
+  list-style-position: inside;
+}
+
+.listItemRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+}
+
+.listItemRow .cellInput {
+  flex: 1;
+}
+
+.listItemRow .removeParamBtn {
+  flex-shrink: 0;
 }
 
 .replayBtn {

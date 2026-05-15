@@ -615,19 +615,49 @@ export function ScraperTool() {
 
 function TableCard({ table, index }: { table: ScrapedTable; index: number }) {
   const [expanded, setExpanded] = useState(true)
+  const [editing, setEditing] = useState(false)
+  const [headers, setHeaders] = useState<string[]>([...table.headers])
+  const [rows, setRows] = useState<string[][]>(table.rows.map(r => [...r]))
   const maxPreviewRows = 5
-  const previewRows = expanded ? table.rows : table.rows.slice(0, maxPreviewRows)
-  const hasMore = table.rows.length > maxPreviewRows
+  const previewRows = expanded ? rows : rows.slice(0, maxPreviewRows)
+  const hasMore = rows.length > maxPreviewRows
+
+  const currentTable: ScrapedTable = { ...table, headers, rows }
 
   const handleCopyCsv = () => {
-    navigator.clipboard.writeText(tableToCsv(table))
+    navigator.clipboard.writeText(tableToCsv(currentTable))
   }
 
   const handleExportExcel = async () => {
     try {
       const name = table.caption || `table-${index + 1}`
-      await exportTableToExcel(table, `${name}.xlsx`)
+      await exportTableToExcel(currentTable, `${name}.xlsx`)
     } catch { /* ignore */ }
+  }
+
+  const handleCellChange = (rowIdx: number, colIdx: number, value: string) => {
+    setRows(prev => {
+      const next = prev.map(r => [...r])
+      next[rowIdx][colIdx] = value
+      return next
+    })
+  }
+
+  const handleHeaderChange = (colIdx: number, value: string) => {
+    setHeaders(prev => {
+      const next = [...prev]
+      next[colIdx] = value
+      return next
+    })
+  }
+
+  const handleDeleteRow = (rowIdx: number) => {
+    setRows(prev => prev.filter((_, i) => i !== rowIdx))
+  }
+
+  const handleAddRow = () => {
+    const colCount = headers.length || rows[0]?.length || 1
+    setRows(prev => [...prev, new Array(colCount).fill('')])
   }
 
   return (
@@ -635,34 +665,67 @@ function TableCard({ table, index }: { table: ScrapedTable; index: number }) {
       <div className={styles.cardHeader}>
         <span className={styles.cardTitle}>
           {table.caption || `表格 ${index + 1}`}
-          <span className={styles.cardMeta}>{table.rows.length} 行 × {table.headers.length || table.rows[0]?.length || 0} 列</span>
+          <span className={styles.cardMeta}>{rows.length} 行 × {headers.length || rows[0]?.length || 0} 列</span>
         </span>
         <div className={styles.cardActions}>
-          <CopyButton text={tableToText(table)} label="复制" />
+          <button className={styles.smallBtn} onClick={() => setEditing(!editing)}>
+            {editing ? '✅ 完成' : '✏️ 编辑'}
+          </button>
+          <CopyButton text={tableToText(currentTable)} label="复制" />
           <button className={styles.smallBtn} onClick={handleCopyCsv}>CSV</button>
           <button className={styles.smallBtn} onClick={handleExportExcel}>Excel</button>
         </div>
       </div>
       <div className={styles.tableWrap}>
         <table className={styles.dataTable}>
-          {table.headers.length > 0 && (
+          {headers.length > 0 && (
             <thead>
-              <tr>{table.headers.map((h, i) => <th key={i}>{h}</th>)}</tr>
+              <tr>{headers.map((h, i) => (
+                <th key={i}>
+                  {editing ? (
+                    <input
+                      className={styles.cellInput}
+                      value={h}
+                      onChange={(e) => handleHeaderChange(i, e.target.value)}
+                    />
+                  ) : h}
+                </th>
+              ))}</tr>
             </thead>
           )}
           <tbody>
             {previewRows.map((row, ri) => (
-              <tr key={ri}>{row.map((cell, ci) => <td key={ci}>{cell}</td>)}</tr>
+              <tr key={ri}>
+                {row.map((cell, ci) => (
+                  <td key={ci}>
+                    {editing ? (
+                      <input
+                        className={styles.cellInput}
+                        value={cell}
+                        onChange={(e) => handleCellChange(ri, ci, e.target.value)}
+                      />
+                    ) : cell}
+                  </td>
+                ))}
+                {editing && (
+                  <td className={styles.cellAction}>
+                    <button className={styles.removeParamBtn} onClick={() => handleDeleteRow(ri)}>✕</button>
+                  </td>
+                )}
+              </tr>
             ))}
           </tbody>
         </table>
       </div>
-      {hasMore && !expanded && (
+      {editing && (
+        <button className={styles.expandBtn} onClick={handleAddRow}>+ 添加行</button>
+      )}
+      {!editing && hasMore && !expanded && (
         <button className={styles.expandBtn} onClick={() => setExpanded(true)}>
-          显示全部 {table.rows.length} 行
+          显示全部 {rows.length} 行
         </button>
       )}
-      {expanded && hasMore && (
+      {!editing && expanded && hasMore && (
         <button className={styles.expandBtn} onClick={() => setExpanded(false)}>
           收起
         </button>
@@ -672,22 +735,60 @@ function TableCard({ table, index }: { table: ScrapedTable; index: number }) {
 }
 
 function ListCard({ list, index }: { list: ScrapedList; index: number }) {
+  const [editing, setEditing] = useState(false)
+  const [items, setItems] = useState<string[]>([...list.items])
+
+  const currentList: ScrapedList = { ...list, items }
+
+  const handleItemChange = (idx: number, value: string) => {
+    setItems(prev => {
+      const next = [...prev]
+      next[idx] = value
+      return next
+    })
+  }
+
+  const handleDeleteItem = (idx: number) => {
+    setItems(prev => prev.filter((_, i) => i !== idx))
+  }
+
+  const handleAddItem = () => {
+    setItems(prev => [...prev, ''])
+  }
+
   return (
     <div className={styles.card}>
       <div className={styles.cardHeader}>
         <span className={styles.cardTitle}>
           {list.label || `列表 ${index + 1}`}
-          <span className={styles.cardMeta}>{list.source.toUpperCase()} · {list.items.length} 项</span>
+          <span className={styles.cardMeta}>{list.source.toUpperCase()} · {items.length} 项</span>
         </span>
         <div className={styles.cardActions}>
-          <CopyButton text={listToText(list)} label="复制" />
+          <button className={styles.smallBtn} onClick={() => setEditing(!editing)}>
+            {editing ? '✅ 完成' : '✏️ 编辑'}
+          </button>
+          <CopyButton text={listToText(currentList)} label="复制" />
         </div>
       </div>
       <ol className={styles.listItems}>
-        {list.items.map((item, i) => (
-          <li key={i}>{item}</li>
+        {items.map((item, i) => (
+          <li key={i} className={styles.listItemEdit}>
+            {editing ? (
+              <div className={styles.listItemRow}>
+                <input
+                  className={styles.cellInput}
+                  value={item}
+                  onChange={(e) => handleItemChange(i, e.target.value)}
+                />
+                <button className={styles.removeParamBtn} onClick={() => handleDeleteItem(i)}>✕</button>
+              </div>
+            ) : item}
+          </li>
         ))}
       </ol>
+      {editing && (
+        <button className={styles.expandBtn} onClick={handleAddItem}>+ 添加项</button>
+      )}
     </div>
   )
 }
