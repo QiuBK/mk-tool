@@ -627,7 +627,7 @@ function TableCard({ table, index }: { table: ScrapedTable; index: number }) {
 
   const handleSync = async () => {
     setSyncMsg('同步中...')
-    const result = await syncTableToPage(index, headers, rows)
+    const result = await syncTableToPage(table.domId || '', headers, rows)
     if (result.success) {
       setSyncMsg('✅ 已同步到页面')
     } else {
@@ -762,7 +762,7 @@ function ListCard({ list, index }: { list: ScrapedList; index: number }) {
 
   const handleSync = async () => {
     setSyncMsg('同步中...')
-    const result = await syncListToPage(index, items)
+    const result = await syncListToPage(list.domId || '', items)
     if (result.success) {
       setSyncMsg('✅ 已同步到页面')
     } else {

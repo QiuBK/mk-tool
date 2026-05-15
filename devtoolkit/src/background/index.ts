@@ -230,7 +230,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message.type === 'syncTableToPage') {
-    const tableIndex = message.tableIndex as number
+    const domId = message.domId as string
     const headers = message.headers as string[]
     const rows = message.rows as string[][]
     getActiveTabId().then((tabId) => {
@@ -240,10 +240,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       }
       chrome.scripting.executeScript({
         target: { tabId },
-        func: (idx: number, newHeaders: string[], newRows: string[][]) => {
-          const tables = document.querySelectorAll('table')
-          if (idx >= tables.length) return { ok: false, msg: `找不到第${idx + 1}个表格(共${tables.length}个)` }
-          const table = tables[idx]
+        func: (id: string, newHeaders: string[], newRows: string[][]) => {
+          const table = document.querySelector(`table[data-devtoolkit-id="${id}"]`)
+          if (!table) return { ok: false, msg: `找不到标记为${id}的表格` }
+
           if (newHeaders.length > 0) {
             const headerCells = table.querySelectorAll('thead th, thead td')
             newHeaders.forEach((text, i) => {
@@ -261,7 +261,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           })
           return { ok: true }
         },
-        args: [tableIndex, headers, rows],
+        args: [domId, headers, rows],
       }).then((results) => {
         const result = results?.[0]?.result as any
         if (result && !result.ok) {
@@ -277,7 +277,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message.type === 'syncListToPage') {
-    const listIndex = message.listIndex as number
+    const domId = message.domId as string
     const items = message.items as string[]
     getActiveTabId().then((tabId) => {
       if (!tabId) {
@@ -286,23 +286,17 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       }
       chrome.scripting.executeScript({
         target: { tabId },
-        func: (idx: number, newItems: string[]) => {
-          const lists = document.querySelectorAll('ul, ol')
-          const visibleLists: Element[] = []
-          lists.forEach((list) => {
-            if (list.closest('table, nav, header, footer, [role="navigation"]')) return
-            if (list.closest('ul, ol') && list.parentElement?.closest('ul, ol')) return
-            visibleLists.push(list)
-          })
-          if (idx >= visibleLists.length) return { ok: false, msg: `找不到第${idx + 1}个列表(共${visibleLists.length}个)` }
-          const list = visibleLists[idx]
+        func: (id: string, newItems: string[]) => {
+          const list = document.querySelector(`ul[data-devtoolkit-id="${id}"], ol[data-devtoolkit-id="${id}"]`)
+          if (!list) return { ok: false, msg: `找不到标记为${id}的列表` }
+
           const listItems = list.querySelectorAll(':scope > li')
           newItems.forEach((text, i) => {
             if (i < listItems.length) listItems[i].textContent = text
           })
           return { ok: true }
         },
-        args: [listIndex, items],
+        args: [domId, items],
       }).then((results) => {
         const result = results?.[0]?.result as any
         if (result && !result.ok) {

@@ -1,8 +1,14 @@
 import type { ScrapeResult, ScrapedTable, ScrapedList, CapturedRequest, ReplayResponse } from '../types'
 
 function scrapePageFn() {
-  function extractTables(): { headers: string[]; rows: string[][]; caption: string; source: 'table' }[] {
-    const results: { headers: string[]; rows: string[][]; caption: string; source: 'table' }[] = []
+  let idCounter = 0
+  function nextId(): string {
+    idCounter++
+    return `devtoolkit-${idCounter}`
+  }
+
+  function extractTables(): { headers: string[]; rows: string[][]; caption: string; source: 'table'; domId: string }[] {
+    const results: { headers: string[]; rows: string[][]; caption: string; source: 'table'; domId: string }[] = []
     document.querySelectorAll('table').forEach((table) => {
       const caption = table.caption?.textContent?.trim() || ''
       const allRows = table.querySelectorAll('tr')
@@ -33,13 +39,17 @@ function scrapePageFn() {
         if (cells.length > 0) rows.push(Array.from(cells).map((cell) => cell.textContent?.trim() || ''))
       })
 
-      if (rows.length > 0) results.push({ headers, rows, caption, source: 'table' })
+      if (rows.length > 0) {
+        const domId = nextId()
+        table.setAttribute('data-devtoolkit-id', domId)
+        results.push({ headers, rows, caption, source: 'table', domId })
+      }
     })
     return results
   }
 
-  function extractLists(): { items: string[]; label: string; source: 'ul' | 'ol' }[] {
-    const results: { items: string[]; label: string; source: 'ul' | 'ol' }[] = []
+  function extractLists(): { items: string[]; label: string; source: 'ul' | 'ol'; domId: string }[] {
+    const results: { items: string[]; label: string; source: 'ul' | 'ol'; domId: string }[] = []
     document.querySelectorAll('ul, ol').forEach((list) => {
       if (list.closest('table, nav, header, footer, [role="navigation"]')) return
       if (list.closest('ul, ol') && list.parentElement?.closest('ul, ol')) return
@@ -47,8 +57,10 @@ function scrapePageFn() {
         .map((li) => li.textContent?.trim() || '')
         .filter((text) => text.length > 0)
       if (items.length >= 2) {
+        const domId = nextId()
+        list.setAttribute('data-devtoolkit-id', domId)
         const label = list.getAttribute('aria-label') || list.previousElementSibling?.textContent?.trim()?.slice(0, 50) || ''
-        results.push({ items, label, source: list.tagName.toLowerCase() as 'ul' | 'ol' })
+        results.push({ items, label, source: list.tagName.toLowerCase() as 'ul' | 'ol', domId })
       }
     })
     return results
@@ -162,14 +174,14 @@ export async function exportTableToExcel(table: ScrapedTable, fileName?: string)
   return name
 }
 
-export async function syncTableToPage(tableIndex: number, headers: string[], rows: string[][]): Promise<{ success: boolean; error?: string }> {
+export async function syncTableToPage(domId: string, headers: string[], rows: string[][]): Promise<{ success: boolean; error?: string }> {
   if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) {
     return { success: false, error: '扩展API不可用' }
   }
 
   return new Promise((resolve) => {
     chrome.runtime.sendMessage(
-      { type: 'syncTableToPage', tableIndex, headers, rows },
+      { type: 'syncTableToPage', domId, headers, rows },
       (response) => {
         if (chrome.runtime.lastError) {
           resolve({ success: false, error: chrome.runtime.lastError.message })
@@ -181,14 +193,14 @@ export async function syncTableToPage(tableIndex: number, headers: string[], row
   })
 }
 
-export async function syncListToPage(listIndex: number, items: string[]): Promise<{ success: boolean; error?: string }> {
+export async function syncListToPage(domId: string, items: string[]): Promise<{ success: boolean; error?: string }> {
   if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) {
     return { success: false, error: '扩展API不可用' }
   }
 
   return new Promise((resolve) => {
     chrome.runtime.sendMessage(
-      { type: 'syncListToPage', listIndex, items },
+      { type: 'syncListToPage', domId, items },
       (response) => {
         if (chrome.runtime.lastError) {
           resolve({ success: false, error: chrome.runtime.lastError.message })

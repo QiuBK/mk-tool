@@ -114,12 +114,14 @@ export interface ScrapedTable {
   rows: string[][]
   caption: string
   source: 'table'
+  domId?: string
 }
 
 export interface ScrapedList {
   items: string[]
   label: string
   source: 'ul' | 'ol'
+  domId?: string
 }
 
 export type ScrapedData = ScrapedTable | ScrapedList
