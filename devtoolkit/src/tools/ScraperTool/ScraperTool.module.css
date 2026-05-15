@@ -235,6 +235,38 @@
   white-space: nowrap;
 }
 
+.syncBar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  flex-wrap: wrap;
+}
+
+.syncBtn {
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 3px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.syncBtn:hover {
+  opacity: 0.9;
+}
+
+.syncOk {
+  font-size: 11px;
+  color: #49cc90;
+}
+
+.syncErr {
+  font-size: 11px;
+  color: #f93e3e;
+}
+
 .syncHint {
   font-size: 11px;
   color: var(--color-primary);

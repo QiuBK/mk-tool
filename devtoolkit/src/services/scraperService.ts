@@ -162,84 +162,108 @@ export async function exportTableToExcel(table: ScrapedTable, fileName?: string)
   return name
 }
 
-export async function syncTableToPage(tableIndex: number, headers: string[], rows: string[][]): Promise<void> {
-  if (typeof chrome === 'undefined' || !chrome.scripting) return
+export async function syncTableToPage(tableIndex: number, headers: string[], rows: string[][]): Promise<{ success: boolean; error?: string }> {
+  if (typeof chrome === 'undefined' || !chrome.scripting) {
+    return { success: false, error: '扩展API不可用' }
+  }
 
-  const tabId = await getActiveTabId()
-  if (!tabId) return
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+    if (!tab?.id) {
+      return { success: false, error: '无法获取标签页' }
+    }
+    if (tab.url?.startsWith('chrome://') || tab.url?.startsWith('edge://') || tab.url?.startsWith('about:')) {
+      return { success: false, error: '无法在浏览器内部页面操作' }
+    }
 
-  await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: (idx: number, newHeaders: string[], newRows: string[][]) => {
-      const tables = document.querySelectorAll('table')
-      if (idx >= tables.length) return
-      const table = tables[idx]
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: (idx: number, newHeaders: string[], newRows: string[][]) => {
+        const tables = document.querySelectorAll('table')
+        if (idx >= tables.length) return { ok: false, msg: `找不到第${idx + 1}个表格` }
+        const table = tables[idx]
 
-      if (newHeaders.length > 0) {
-        let thead = table.querySelector('thead')
-        if (!thead) {
-          thead = document.createElement('thead')
-          table.insertBefore(thead, table.firstChild)
-        }
-        let headerRow = thead.querySelector('tr')
-        if (!headerRow) {
-          headerRow = document.createElement('tr')
-          thead.appendChild(headerRow)
-        }
-        const headerCells = headerRow.querySelectorAll('th, td')
-        newHeaders.forEach((text, i) => {
-          if (i < headerCells.length) {
-            headerCells[i].textContent = text
-          }
-        })
-      }
-
-      const bodyRows = table.querySelectorAll('tbody tr')
-      newRows.forEach((rowData, ri) => {
-        if (ri < bodyRows.length) {
-          const cells = bodyRows[ri].querySelectorAll('td, th')
-          rowData.forEach((text, ci) => {
-            if (ci < cells.length) {
-              cells[ci].textContent = text
+        if (newHeaders.length > 0) {
+          const headerCells = table.querySelectorAll('thead th, thead td')
+          newHeaders.forEach((text, i) => {
+            if (i < headerCells.length) {
+              headerCells[i].textContent = text
             }
           })
         }
-      })
-    },
-    args: [tableIndex, headers, rows],
-  })
+
+        const bodyRows = table.querySelectorAll('tbody tr')
+        newRows.forEach((rowData, ri) => {
+          if (ri < bodyRows.length) {
+            const cells = bodyRows[ri].querySelectorAll('td, th')
+            rowData.forEach((text, ci) => {
+              if (ci < cells.length) {
+                cells[ci].textContent = text
+              }
+            })
+          }
+        })
+        return { ok: true }
+      },
+      args: [tableIndex, headers, rows],
+    })
+
+    const result = results?.[0]?.result as any
+    if (result && !result.ok) {
+      return { success: false, error: result.msg }
+    }
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : '同步失败' }
+  }
 }
 
-export async function syncListToPage(listIndex: number, items: string[]): Promise<void> {
-  if (typeof chrome === 'undefined' || !chrome.scripting) return
+export async function syncListToPage(listIndex: number, items: string[]): Promise<{ success: boolean; error?: string }> {
+  if (typeof chrome === 'undefined' || !chrome.scripting) {
+    return { success: false, error: '扩展API不可用' }
+  }
 
-  const tabId = await getActiveTabId()
-  if (!tabId) return
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+    if (!tab?.id) {
+      return { success: false, error: '无法获取标签页' }
+    }
+    if (tab.url?.startsWith('chrome://') || tab.url?.startsWith('edge://') || tab.url?.startsWith('about:')) {
+      return { success: false, error: '无法在浏览器内部页面操作' }
+    }
 
-  await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: (idx: number, newItems: string[]) => {
-      const lists = document.querySelectorAll('ul, ol')
-      const visibleLists: Element[] = []
-      lists.forEach((list) => {
-        if (list.closest('table, nav, header, footer, [role="navigation"]')) return
-        if (list.closest('ul, ol') && list.parentElement?.closest('ul, ol')) return
-        visibleLists.push(list)
-      })
-      if (idx >= visibleLists.length) return
-      const list = visibleLists[idx]
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: (idx: number, newItems: string[]) => {
+        const lists = document.querySelectorAll('ul, ol')
+        const visibleLists: Element[] = []
+        lists.forEach((list) => {
+          if (list.closest('table, nav, header, footer, [role="navigation"]')) return
+          if (list.closest('ul, ol') && list.parentElement?.closest('ul, ol')) return
+          visibleLists.push(list)
+        })
+        if (idx >= visibleLists.length) return { ok: false, msg: `找不到第${idx + 1}个列表` }
+        const list = visibleLists[idx]
 
-      const listItems = list.querySelectorAll(':scope > li')
-      newItems.forEach((text, i) => {
-        if (i < listItems.length) {
-          listItems[i].textContent = text
-        }
-      })
-    },
-    args: [listIndex, items],
-  })
+        const listItems = list.querySelectorAll(':scope > li')
+        newItems.forEach((text, i) => {
+          if (i < listItems.length) {
+            listItems[i].textContent = text
+          }
+        })
+        return { ok: true }
+      },
+      args: [listIndex, items],
+    })
+
+    const result = results?.[0]?.result as any
+    if (result && !result.ok) {
+      return { success: false, error: result.msg }
+    }
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : '同步失败' }
+  }
 }
 
 export async function getActiveTabId(): Promise<number | null> {

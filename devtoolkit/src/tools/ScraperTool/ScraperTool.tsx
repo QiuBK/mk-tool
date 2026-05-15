@@ -618,18 +618,23 @@ function TableCard({ table, index }: { table: ScrapedTable; index: number }) {
   const [editing, setEditing] = useState(false)
   const [headers, setHeaders] = useState<string[]>([...table.headers])
   const [rows, setRows] = useState<string[][]>(table.rows.map(r => [...r]))
-  const [syncVersion, setSyncVersion] = useState(0)
+  const [syncMsg, setSyncMsg] = useState('')
   const maxPreviewRows = 5
   const previewRows = expanded ? rows : rows.slice(0, maxPreviewRows)
   const hasMore = rows.length > maxPreviewRows
 
   const currentTable: ScrapedTable = { ...table, headers, rows }
 
-  useEffect(() => {
-    if (editing && syncVersion > 0) {
-      syncTableToPage(index, headers, rows)
+  const handleSync = async () => {
+    setSyncMsg('同步中...')
+    const result = await syncTableToPage(index, headers, rows)
+    if (result.success) {
+      setSyncMsg('✅ 已同步到页面')
+    } else {
+      setSyncMsg(`❌ ${result.error}`)
     }
-  }, [syncVersion])
+    setTimeout(() => setSyncMsg(''), 3000)
+  }
 
   const handleCopyCsv = () => {
     navigator.clipboard.writeText(tableToCsv(currentTable))
@@ -648,7 +653,6 @@ function TableCard({ table, index }: { table: ScrapedTable; index: number }) {
       next[rowIdx][colIdx] = value
       return next
     })
-    setSyncVersion(v => v + 1)
   }
 
   const handleHeaderChange = (colIdx: number, value: string) => {
@@ -657,12 +661,10 @@ function TableCard({ table, index }: { table: ScrapedTable; index: number }) {
       next[colIdx] = value
       return next
     })
-    setSyncVersion(v => v + 1)
   }
 
   const handleDeleteRow = (rowIdx: number) => {
     setRows(prev => prev.filter((_, i) => i !== rowIdx))
-    setSyncVersion(v => v + 1)
   }
 
   const handleAddRow = () => {
@@ -687,7 +689,11 @@ function TableCard({ table, index }: { table: ScrapedTable; index: number }) {
         </div>
       </div>
       {editing && (
-        <div className={styles.syncHint}>📝 编辑模式下修改会实时同步到页面</div>
+        <div className={styles.syncBar}>
+          <span className={styles.syncHint}>📝 编辑后点击同步</span>
+          <button className={styles.syncBtn} onClick={handleSync}>🔄 同步到页面</button>
+          {syncMsg && <span className={syncMsg.startsWith('✅') ? styles.syncOk : styles.syncErr}>{syncMsg}</span>}
+        </div>
       )}
       <div className={styles.tableWrap}>
         <table className={styles.dataTable}>
@@ -750,15 +756,20 @@ function TableCard({ table, index }: { table: ScrapedTable; index: number }) {
 function ListCard({ list, index }: { list: ScrapedList; index: number }) {
   const [editing, setEditing] = useState(false)
   const [items, setItems] = useState<string[]>([...list.items])
-  const [syncVersion, setSyncVersion] = useState(0)
+  const [syncMsg, setSyncMsg] = useState('')
 
   const currentList: ScrapedList = { ...list, items }
 
-  useEffect(() => {
-    if (editing && syncVersion > 0) {
-      syncListToPage(index, items)
+  const handleSync = async () => {
+    setSyncMsg('同步中...')
+    const result = await syncListToPage(index, items)
+    if (result.success) {
+      setSyncMsg('✅ 已同步到页面')
+    } else {
+      setSyncMsg(`❌ ${result.error}`)
     }
-  }, [syncVersion])
+    setTimeout(() => setSyncMsg(''), 3000)
+  }
 
   const handleItemChange = (idx: number, value: string) => {
     setItems(prev => {
@@ -766,12 +777,10 @@ function ListCard({ list, index }: { list: ScrapedList; index: number }) {
       next[idx] = value
       return next
     })
-    setSyncVersion(v => v + 1)
   }
 
   const handleDeleteItem = (idx: number) => {
     setItems(prev => prev.filter((_, i) => i !== idx))
-    setSyncVersion(v => v + 1)
   }
 
   const handleAddItem = () => {
@@ -793,7 +802,11 @@ function ListCard({ list, index }: { list: ScrapedList; index: number }) {
         </div>
       </div>
       {editing && (
-        <div className={styles.syncHint}>📝 编辑模式下修改会实时同步到页面</div>
+        <div className={styles.syncBar}>
+          <span className={styles.syncHint}>📝 编辑后点击同步</span>
+          <button className={styles.syncBtn} onClick={handleSync}>🔄 同步到页面</button>
+          {syncMsg && <span className={syncMsg.startsWith('✅') ? styles.syncOk : styles.syncErr}>{syncMsg}</span>}
+        </div>
       )}
       <ol className={styles.listItems}>
         {items.map((item, i) => (
