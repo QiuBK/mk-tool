@@ -241,7 +241,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       chrome.scripting.executeScript({
         target: { tabId },
         func: (id: string, hdrJson: string, rowsJson: string) => {
-          const el = document.createElement('devtoolkit-sync')
+          var existing = document.getElementById('__devtoolkit_sync__')
+          if (existing) existing.remove()
+          var el = document.createElement('devtoolkit-sync')
           el.id = '__devtoolkit_sync__'
           el.setAttribute('data-type', 'table')
           el.setAttribute('data-id', id)
@@ -251,95 +253,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         },
         args: [domId, JSON.stringify(headers), JSON.stringify(rows)],
       }).then(() => {
-        chrome.scripting.executeScript({
+        return chrome.scripting.executeScript({
           target: { tabId },
           world: 'MAIN',
-          func: () => {
-            const el = document.getElementById('__devtoolkit_sync__')
-            if (!el) return
-            const type = el.getAttribute('data-type')
-            const id = el.getAttribute('data-id') || ''
-            const newHeaders: string[] = JSON.parse(el.getAttribute('data-headers') || '[]')
-            const newRows: string[][] = JSON.parse(el.getAttribute('data-rows') || '[]')
-            el.remove()
-
-            if (type !== 'table') return
-            const table = document.querySelector('table[data-devtoolkit-id="' + id + '"]')
-            if (!table) return
-
-            function setInputValue(el: any, val: string) {
-              el.focus()
-              el.dispatchEvent(new Event('focus', { bubbles: true }))
-              if (el.tagName === 'SELECT') {
-                var found = false
-                var opts = el.querySelectorAll('option')
-                opts.forEach(function(opt: any) {
-                  if (opt.textContent.trim() === val || opt.value === val) {
-                    opt.selected = true; opt.setAttribute('selected', 'selected'); found = true
-                  } else {
-                    opt.selected = false; opt.removeAttribute('selected')
-                  }
-                })
-                if (!found) {
-                  var o = document.createElement('option')
-                  o.value = val; o.textContent = val; o.selected = true
-                  el.appendChild(o)
-                }
-                var setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')
-                if (setter && setter.set) setter.set.call(el, val); else el.value = val
-              } else {
-                var proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype
-                var setter = Object.getOwnPropertyDescriptor(proto, 'value')
-                if (setter && setter.set) setter.set.call(el, val); else el.value = val
-              }
-              el.dispatchEvent(new Event('input', { bubbles: true }))
-              el.dispatchEvent(new Event('change', { bubbles: true }))
-              el.dispatchEvent(new Event('blur', { bubbles: true }))
-            }
-
-            function setCellContent(cell: any, text: string) {
-              var inputs = cell.querySelectorAll('input')
-              var selects = cell.querySelectorAll('select')
-              var textareas = cell.querySelectorAll('textarea')
-              if (inputs.length > 0) inputs.forEach(function(e: any) { setInputValue(e, text) })
-              if (selects.length > 0) selects.forEach(function(e: any) { setInputValue(e, text) })
-              if (textareas.length > 0) textareas.forEach(function(e: any) { setInputValue(e, text) })
-              if (inputs.length === 0 && selects.length === 0 && textareas.length === 0) {
-                cell.textContent = text
-              }
-            }
-
-            if (newHeaders.length > 0) {
-              var hCells = table.querySelectorAll('thead th, thead td')
-              newHeaders.forEach(function(t: string, i: number) {
-                if (i < hCells.length) setCellContent(hCells[i], t)
-              })
-            }
-
-            var tbody = table.querySelector('tbody')
-            if (!tbody) { tbody = document.createElement('tbody'); table.appendChild(tbody) }
-            var existingRows = tbody!.querySelectorAll(':scope > tr')
-            var colCount = newHeaders.length || (newRows[0] ? newRows[0].length : 1)
-
-            newRows.forEach(function(rowData: string[], ri: number) {
-              var tr
-              if (ri < existingRows.length) {
-                tr = existingRows[ri]
-              } else {
-                tr = document.createElement('tr')
-                for (var c = 0; c < colCount; c++) { var td = document.createElement('td'); tr.appendChild(td) }
-                tbody!.appendChild(tr)
-              }
-              var cells = tr.querySelectorAll('td, th')
-              rowData.forEach(function(text: string, ci: number) {
-                if (ci < cells.length) setCellContent(cells[ci], text)
-              })
-            })
-
-            for (var ri = existingRows.length - 1; ri >= newRows.length; ri--) {
-              existingRows[ri].remove()
-            }
-          },
+          files: ['content/sync.js'],
         })
       }).then(() => {
         sendResponse({ success: true })
@@ -361,7 +278,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       chrome.scripting.executeScript({
         target: { tabId },
         func: (id: string, itemsJson: string) => {
-          const el = document.createElement('devtoolkit-sync')
+          var existing = document.getElementById('__devtoolkit_sync__')
+          if (existing) existing.remove()
+          var el = document.createElement('devtoolkit-sync')
           el.id = '__devtoolkit_sync__'
           el.setAttribute('data-type', 'list')
           el.setAttribute('data-id', id)
@@ -370,79 +289,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         },
         args: [domId, JSON.stringify(items)],
       }).then(() => {
-        chrome.scripting.executeScript({
+        return chrome.scripting.executeScript({
           target: { tabId },
           world: 'MAIN',
-          func: () => {
-            const el = document.getElementById('__devtoolkit_sync__')
-            if (!el) return
-            const type = el.getAttribute('data-type')
-            const id = el.getAttribute('data-id') || ''
-            const newItems: string[] = JSON.parse(el.getAttribute('data-items') || '[]')
-            el.remove()
-
-            if (type !== 'list') return
-            const list = document.querySelector('ul[data-devtoolkit-id="' + id + '"], ol[data-devtoolkit-id="' + id + '"]')
-            if (!list) return
-
-            function setInputValue(el: any, val: string) {
-              el.focus()
-              el.dispatchEvent(new Event('focus', { bubbles: true }))
-              if (el.tagName === 'SELECT') {
-                var found = false
-                var opts = el.querySelectorAll('option')
-                opts.forEach(function(opt: any) {
-                  if (opt.textContent.trim() === val || opt.value === val) {
-                    opt.selected = true; opt.setAttribute('selected', 'selected'); found = true
-                  } else {
-                    opt.selected = false; opt.removeAttribute('selected')
-                  }
-                })
-                if (!found) {
-                  var o = document.createElement('option')
-                  o.value = val; o.textContent = val; o.selected = true
-                  el.appendChild(o)
-                }
-                var setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')
-                if (setter && setter.set) setter.set.call(el, val); else el.value = val
-              } else {
-                var proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype
-                var setter = Object.getOwnPropertyDescriptor(proto, 'value')
-                if (setter && setter.set) setter.set.call(el, val); else el.value = val
-              }
-              el.dispatchEvent(new Event('input', { bubbles: true }))
-              el.dispatchEvent(new Event('change', { bubbles: true }))
-              el.dispatchEvent(new Event('blur', { bubbles: true }))
-            }
-
-            function setItemContent(li: any, text: string) {
-              var inputs = li.querySelectorAll('input')
-              var selects = li.querySelectorAll('select')
-              var textareas = li.querySelectorAll('textarea')
-              if (inputs.length > 0) inputs.forEach(function(e: any) { setInputValue(e, text) })
-              if (selects.length > 0) selects.forEach(function(e: any) { setInputValue(e, text) })
-              if (textareas.length > 0) textareas.forEach(function(e: any) { setInputValue(e, text) })
-              if (inputs.length === 0 && selects.length === 0 && textareas.length === 0) {
-                li.textContent = text
-              }
-            }
-
-            var existingItems = list.querySelectorAll(':scope > li')
-
-            newItems.forEach(function(text: string, i: number) {
-              if (i < existingItems.length) {
-                setItemContent(existingItems[i], text)
-              } else {
-                var li = document.createElement('li')
-                li.textContent = text
-                list.appendChild(li)
-              }
-            })
-
-            for (var i = existingItems.length - 1; i >= newItems.length; i--) {
-              existingItems[i].remove()
-            }
-          },
+          files: ['content/sync.js'],
         })
       }).then(() => {
         sendResponse({ success: true })
