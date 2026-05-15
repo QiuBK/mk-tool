@@ -250,6 +250,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
             expression: expandJsCode,
             returnByValue: true,
+            awaitPromise: true,
           }, (res: any) => {
             if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message))
             else resolve(res)
@@ -268,19 +269,38 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         const count = val?.count || 0
         const found = val?.found ? val.found.join('; ') : ''
         const debug = val?.debug ? val.debug.join('; ') : ''
-        const storeInfo = val?.storeInfo ? val.storeInfo.map((s: any) => s.name + ':[' + (s.keys || []).join(',') + ']' + (s.sample ? ' ' + s.sample : '')).join('\n') : ''
-        const compSamples = val?.compSamples ? val.compSamples.map((s: any) => '[' + (s.keys || []).join(',') + ']').join('; ') : ''
-        const domInfo = val?.domInfo ? val.domInfo.map((d: any) => d.classes + ':' + (d.actions || []).join(',')).join('; ') : ''
+        const storeDetail = val?.storeDetail ? val.storeDetail.map((s: any) => {
+          let str = s.name + ':state=[' + (s.stateKeys || []).join(',') + ']'
+          if (s.nested && s.nested.length > 0) {
+            for (const n of s.nested) {
+              if (n.err) { str += ' ' + n.key + ':ERR(' + n.err + ')'; continue }
+              if (n.val !== undefined) { str += ' ' + n.key + '=' + n.val; continue }
+              str += ' ' + n.key + ':[' + (n.keys || []).join(',') + ']'
+              if (n.sub && n.sub.length > 0) {
+                for (const ss of n.sub) {
+                  if (ss.val !== undefined) { str += ' ' + n.key + '.' + ss.key + '=' + ss.val; continue }
+                  str += ' ' + n.key + '.' + ss.key + ':[' + (ss.keys || []).join(',') + ']'
+                  if (ss.vals) {
+                    const valEntries = Object.entries(ss.vals).map(([vk, vv]) => vk + '=' + vv)
+                    str += '{' + valEntries.join(',') + '}'
+                  }
+                }
+              }
+            }
+          }
+          return str
+        }).join('\n') : ''
+        const domActions = val?.domActions ? val.domActions.join('; ') : ''
         let info = found
         if (!info && debug) info = 'debug:' + debug
-        sendResponse({ count, info, debug, storeInfo, compSamples, domInfo })
+        sendResponse({ count, info, debug, storeDetail, domActions })
       } catch (e: any) {
         if (debuggerTabs.has(tabId)) {
           try { chrome.debugger.detach({ tabId }, () => { debuggerTabs.delete(tabId); if (debuggerTabs.size === 0) stopKeepalive() }) } catch {}
         }
-        sendResponse({ count: 0, info: e.message, debug: '', storeInfo: '', compSamples: '', domInfo: '' })
+        sendResponse({ count: 0, info: e.message, debug: '', storeDetail: '', domActions: '' })
       }
-    }).catch(() => { sendResponse({ count: 0, info: 'no tab', debug: '', storeInfo: '', compSamples: '', domInfo: '' }) })
+    }).catch(() => { sendResponse({ count: 0, info: 'no tab', debug: '', storeDetail: '', domActions: '' }) })
     return true
   }
 
