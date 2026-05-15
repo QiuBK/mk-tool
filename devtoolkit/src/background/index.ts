@@ -233,118 +233,53 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     const domId = message.domId as string
     const headers = message.headers as string[]
     const rows = message.rows as string[][]
-    getActiveTabId().then((tabId) => {
+    getActiveTabId().then(async (tabId) => {
       if (!tabId) {
         sendResponse({ success: false, error: '无法获取标签页' })
         return
       }
-      chrome.scripting.executeScript({
-        target: { tabId },
-        world: 'MAIN',
-        func: (id: string, hdrJson: string, rowsJson: string) => {
-          var newHeaders: string[] = JSON.parse(hdrJson);
-          var newRows: string[][] = JSON.parse(rowsJson);
-          var table = document.querySelector('table[data-devtoolkit-id="' + id + '"]');
-          if (!table) return;
-
-          function setElementValue(el: any, val: string) {
-            el.focus();
-            el.dispatchEvent(new Event('focus', { bubbles: true }));
-            if (el.tagName === 'SELECT') {
-              var found = false;
-              var opts = el.options;
-              for (var i = 0; i < opts.length; i++) {
-                if (opts[i].textContent.trim() === val || opts[i].value === val) { found = true; break; }
-              }
-              if (!found) {
-                var o = document.createElement('option');
-                o.value = val; o.textContent = val; el.appendChild(o);
-              }
-              var setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
-              if (setter && setter.set) setter.set.call(el, val); else el.value = val;
-              var tracker = (el as any)._valueTracker;
-              if (tracker) { tracker.setValue(''); }
-              el.dispatchEvent(new Event('input', { bubbles: true }));
-              el.dispatchEvent(new Event('change', { bubbles: true }));
-            } else if (el.tagName === 'TEXTAREA') {
-              el.focus(); el.select();
-              var ok = false;
-              try { document.execCommand('selectAll'); } catch(e) {}
-              try { ok = document.execCommand('insertText', false, val); } catch(e) {}
-              if (!ok) {
-                var setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
-                if (setter && setter.set) setter.set.call(el, val); else el.value = val;
-                var tracker = (el as any)._valueTracker;
-                if (tracker) { tracker.setValue(''); }
-                el.dispatchEvent(new Event('input', { bubbles: true }));
-              }
-            } else {
-              el.focus();
-              var nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
-              if (nativeSetter && nativeSetter.set) nativeSetter.set.call(el, ''); else el.value = '';
-              var tracker = (el as any)._valueTracker;
-              if (tracker) { tracker.setValue(''); }
-              el.dispatchEvent(new Event('input', { bubbles: true }));
-              el.select();
-              var ok = false;
-              try { document.execCommand('selectAll'); } catch(e) {}
-              try { ok = document.execCommand('insertText', false, val); } catch(e) {}
-              if (!ok) {
-                if (nativeSetter && nativeSetter.set) nativeSetter.set.call(el, val); else el.value = val;
-                var tracker2 = (el as any)._valueTracker;
-                if (tracker2) { tracker2.setValue(''); }
-                el.dispatchEvent(new Event('input', { bubbles: true }));
-              }
-            }
-            el.dispatchEvent(new Event('change', { bubbles: true }));
-            el.dispatchEvent(new Event('blur', { bubbles: true }));
-          }
-
-          function setCellContent(cell: any, text: string) {
-            var inputs = cell.querySelectorAll('input');
-            var selects = cell.querySelectorAll('select');
-            var textareas = cell.querySelectorAll('textarea');
-            if (inputs.length > 0) for (var i = 0; i < inputs.length; i++) setElementValue(inputs[i], text);
-            if (selects.length > 0) for (var i = 0; i < selects.length; i++) setElementValue(selects[i], text);
-            if (textareas.length > 0) for (var i = 0; i < textareas.length; i++) setElementValue(textareas[i], text);
-            if (inputs.length === 0 && selects.length === 0 && textareas.length === 0) {
-              cell.textContent = text;
-            }
-          }
-
-          if (newHeaders.length > 0) {
-            var hCells = table.querySelectorAll('thead th, thead td');
-            for (var i = 0; i < newHeaders.length && i < hCells.length; i++) {
-              setCellContent(hCells[i], newHeaders[i]);
-            }
-          }
-          var tbody = table.querySelector('tbody');
-          if (!tbody) { tbody = document.createElement('tbody'); table.appendChild(tbody); }
-          var existingRows = tbody.querySelectorAll(':scope > tr');
-          var colCount = newHeaders.length || (newRows[0] ? newRows[0].length : 1);
-          for (var ri = 0; ri < newRows.length; ri++) {
-            var tr;
-            if (ri < existingRows.length) { tr = existingRows[ri]; }
-            else {
-              tr = document.createElement('tr');
-              for (var c = 0; c < colCount; c++) { var td = document.createElement('td'); tr.appendChild(td); }
-              tbody.appendChild(tr);
-            }
-            var cells = tr.querySelectorAll('td, th');
-            for (var ci = 0; ci < newRows[ri].length && ci < cells.length; ci++) {
-              setCellContent(cells[ci], newRows[ri][ci]);
-            }
-          }
-          for (var ri = existingRows.length - 1; ri >= newRows.length; ri--) {
-            existingRows[ri].remove();
-          }
-        },
-        args: [domId, JSON.stringify(headers), JSON.stringify(rows)],
-      }).then(() => {
+      const wasAttached = debuggerTabs.has(tabId)
+      try {
+        if (!wasAttached) {
+          await new Promise<void>((resolve, reject) => {
+            chrome.debugger.attach({ tabId }, '1.3', () => {
+              if (chrome.runtime.lastError) {
+                const msg = chrome.runtime.lastError.message || ''
+                if (msg.includes('already attached')) { debuggerTabs.add(tabId); resolve() }
+                else reject(new Error(msg))
+              } else { debuggerTabs.add(tabId); resolve() }
+            })
+          })
+        }
+        const syncCode = `(function(){var id=${JSON.stringify(domId)};var newHeaders=${JSON.stringify(headers)};var newRows=${JSON.stringify(rows)};var table=document.querySelector('table[data-devtoolkit-id="'+id+'"]');if(!table)return;function setElementValue(el,val){el.focus();el.dispatchEvent(new Event('focus',{bubbles:true}));if(el.tagName==='SELECT'){var found=false;var opts=el.options;for(var i=0;i<opts.length;i++){if(opts[i].textContent.trim()===val||opts[i].value===val){found=true;break;}}if(!found){var o=document.createElement('option');o.value=val;o.textContent=val;el.appendChild(o);}var setter=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value');if(setter&&setter.set)setter.set.call(el,val);else el.value=val;var tracker=el._valueTracker;if(tracker){tracker.setValue('');}el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));}else if(el.tagName==='TEXTAREA'){el.focus();el.select();var ok=false;try{document.execCommand('selectAll');}catch(e){}try{ok=document.execCommand('insertText',false,val);}catch(e){}if(!ok){var setter=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value');if(setter&&setter.set)setter.set.call(el,val);else el.value=val;var tracker=el._valueTracker;if(tracker){tracker.setValue('');}el.dispatchEvent(new Event('input',{bubbles:true}));}}else{el.focus();var nativeSetter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value');if(nativeSetter&&nativeSetter.set)nativeSetter.set.call(el,'');else el.value='';var tracker=el._valueTracker;if(tracker){tracker.setValue('');}el.dispatchEvent(new Event('input',{bubbles:true}));el.select();var ok=false;try{document.execCommand('selectAll');}catch(e){}try{ok=document.execCommand('insertText',false,val);}catch(e){}if(!ok){if(nativeSetter&&nativeSetter.set)nativeSetter.set.call(el,val);else el.value=val;var tracker2=el._valueTracker;if(tracker2){tracker2.setValue('');}el.dispatchEvent(new Event('input',{bubbles:true}));}}el.dispatchEvent(new Event('change',{bubbles:true}));el.dispatchEvent(new Event('blur',{bubbles:true}));}function setCellContent(cell,text){var inputs=cell.querySelectorAll('input');var selects=cell.querySelectorAll('select');var textareas=cell.querySelectorAll('textarea');if(inputs.length>0)for(var i=0;i<inputs.length;i++)setElementValue(inputs[i],text);if(selects.length>0)for(var i=0;i<selects.length;i++)setElementValue(selects[i],text);if(textareas.length>0)for(var i=0;i<textareas.length;i++)setElementValue(textareas[i],text);if(inputs.length===0&&selects.length===0&&textareas.length===0){cell.textContent=text;}}if(newHeaders.length>0){var hCells=table.querySelectorAll('thead th, thead td');for(var i=0;i<newHeaders.length&&i<hCells.length;i++){setCellContent(hCells[i],newHeaders[i]);}}var tbody=table.querySelector('tbody');if(!tbody){tbody=document.createElement('tbody');table.appendChild(tbody);}var existingRows=tbody.querySelectorAll(':scope > tr');var colCount=newHeaders.length||(newRows[0]?newRows[0].length:1);for(var ri=0;ri<newRows.length;ri++){var tr;if(ri<existingRows.length){tr=existingRows[ri];}else{tr=document.createElement('tr');for(var c=0;c<colCount;c++){var td=document.createElement('td');tr.appendChild(td);}tbody.appendChild(tr);}var cells=tr.querySelectorAll('td, th');for(var ci=0;ci<newRows[ri].length&&ci<cells.length;ci++){setCellContent(cells[ci],newRows[ri][ci]);}}for(var ri=existingRows.length-1;ri>=newRows.length;ri--){existingRows[ri].remove();}})();`
+        await new Promise<void>((resolve, reject) => {
+          chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+            expression: syncCode,
+            returnByValue: true,
+          }, () => {
+            if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message))
+            else resolve()
+          })
+        })
+        if (!wasAttached) {
+          await new Promise<void>((resolve) => {
+            chrome.debugger.detach({ tabId }, () => {
+              debuggerTabs.delete(tabId)
+              if (debuggerTabs.size === 0) stopKeepalive()
+              resolve()
+            })
+          })
+        }
         sendResponse({ success: true })
-      }).catch((e) => {
-        sendResponse({ success: false, error: e.message || '脚本注入失败' })
-      })
+      } catch (e: any) {
+        if (!wasAttached && debuggerTabs.has(tabId)) {
+          chrome.debugger.detach({ tabId }, () => {
+            debuggerTabs.delete(tabId)
+            if (debuggerTabs.size === 0) stopKeepalive()
+          })
+        }
+        sendResponse({ success: false, error: e.message || '同步失败' })
+      }
     }).catch(() => {
       sendResponse({ success: false, error: '无法获取标签页' })
     })
@@ -354,106 +289,53 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'syncListToPage') {
     const domId = message.domId as string
     const items = message.items as string[]
-    getActiveTabId().then((tabId) => {
+    getActiveTabId().then(async (tabId) => {
       if (!tabId) {
         sendResponse({ success: false, error: '无法获取标签页' })
         return
       }
-      chrome.scripting.executeScript({
-        target: { tabId },
-        world: 'MAIN',
-        func: (id: string, itemsJson: string) => {
-          var newItems: string[] = JSON.parse(itemsJson);
-          var list = document.querySelector('ul[data-devtoolkit-id="' + id + '"], ol[data-devtoolkit-id="' + id + '"]');
-          if (!list) return;
-
-          function setElementValue(el: any, val: string) {
-            el.focus();
-            el.dispatchEvent(new Event('focus', { bubbles: true }));
-            if (el.tagName === 'SELECT') {
-              var found = false;
-              var opts = el.options;
-              for (var i = 0; i < opts.length; i++) {
-                if (opts[i].textContent.trim() === val || opts[i].value === val) { found = true; break; }
-              }
-              if (!found) {
-                var o = document.createElement('option');
-                o.value = val; o.textContent = val; el.appendChild(o);
-              }
-              var setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
-              if (setter && setter.set) setter.set.call(el, val); else el.value = val;
-              var tracker = (el as any)._valueTracker;
-              if (tracker) { tracker.setValue(''); }
-              el.dispatchEvent(new Event('input', { bubbles: true }));
-              el.dispatchEvent(new Event('change', { bubbles: true }));
-            } else if (el.tagName === 'TEXTAREA') {
-              el.focus(); el.select();
-              var ok = false;
-              try { document.execCommand('selectAll'); } catch(e) {}
-              try { ok = document.execCommand('insertText', false, val); } catch(e) {}
-              if (!ok) {
-                var setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
-                if (setter && setter.set) setter.set.call(el, val); else el.value = val;
-                var tracker = (el as any)._valueTracker;
-                if (tracker) { tracker.setValue(''); }
-                el.dispatchEvent(new Event('input', { bubbles: true }));
-              }
-            } else {
-              el.focus();
-              var nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
-              if (nativeSetter && nativeSetter.set) nativeSetter.set.call(el, ''); else el.value = '';
-              var tracker = (el as any)._valueTracker;
-              if (tracker) { tracker.setValue(''); }
-              el.dispatchEvent(new Event('input', { bubbles: true }));
-              el.select();
-              var ok = false;
-              try { document.execCommand('selectAll'); } catch(e) {}
-              try { ok = document.execCommand('insertText', false, val); } catch(e) {}
-              if (!ok) {
-                if (nativeSetter && nativeSetter.set) nativeSetter.set.call(el, val); else el.value = val;
-                var tracker2 = (el as any)._valueTracker;
-                if (tracker2) { tracker2.setValue(''); }
-                el.dispatchEvent(new Event('input', { bubbles: true }));
-              }
-            }
-            el.dispatchEvent(new Event('change', { bubbles: true }));
-            el.dispatchEvent(new Event('blur', { bubbles: true }));
-          }
-
-          function setItemContent(li: any, text: string) {
-            var inputs = li.querySelectorAll('input');
-            var selects = li.querySelectorAll('select');
-            var textareas = li.querySelectorAll('textarea');
-            if (inputs.length > 0) for (var i = 0; i < inputs.length; i++) setElementValue(inputs[i], text);
-            if (selects.length > 0) for (var i = 0; i < selects.length; i++) setElementValue(selects[i], text);
-            if (textareas.length > 0) for (var i = 0; i < textareas.length; i++) setElementValue(textareas[i], text);
-            if (inputs.length === 0 && selects.length === 0 && textareas.length === 0) {
-              li.textContent = text;
-            }
-          }
-
-          var existingItems = list.querySelectorAll(':scope > li');
-
-          for (var i = 0; i < newItems.length; i++) {
-            if (i < existingItems.length) {
-              setItemContent(existingItems[i], newItems[i]);
-            } else {
-              var li = document.createElement('li');
-              li.textContent = newItems[i];
-              list.appendChild(li);
-            }
-          }
-
-          for (var i = existingItems.length - 1; i >= newItems.length; i--) {
-            existingItems[i].remove();
-          }
-        },
-        args: [domId, JSON.stringify(items)],
-      }).then(() => {
+      const wasAttached = debuggerTabs.has(tabId)
+      try {
+        if (!wasAttached) {
+          await new Promise<void>((resolve, reject) => {
+            chrome.debugger.attach({ tabId }, '1.3', () => {
+              if (chrome.runtime.lastError) {
+                const msg = chrome.runtime.lastError.message || ''
+                if (msg.includes('already attached')) { debuggerTabs.add(tabId); resolve() }
+                else reject(new Error(msg))
+              } else { debuggerTabs.add(tabId); resolve() }
+            })
+          })
+        }
+        const syncCode = `(function(){var id=${JSON.stringify(domId)};var newItems=${JSON.stringify(items)};var list=document.querySelector('ul[data-devtoolkit-id="'+id+'"], ol[data-devtoolkit-id="'+id+'"]');if(!list)return;function setElementValue(el,val){el.focus();el.dispatchEvent(new Event('focus',{bubbles:true}));if(el.tagName==='SELECT'){var found=false;var opts=el.options;for(var i=0;i<opts.length;i++){if(opts[i].textContent.trim()===val||opts[i].value===val){found=true;break;}}if(!found){var o=document.createElement('option');o.value=val;o.textContent=val;el.appendChild(o);}var setter=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value');if(setter&&setter.set)setter.set.call(el,val);else el.value=val;var tracker=el._valueTracker;if(tracker){tracker.setValue('');}el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));}else if(el.tagName==='TEXTAREA'){el.focus();el.select();var ok=false;try{document.execCommand('selectAll');}catch(e){}try{ok=document.execCommand('insertText',false,val);}catch(e){}if(!ok){var setter=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value');if(setter&&setter.set)setter.set.call(el,val);else el.value=val;var tracker=el._valueTracker;if(tracker){tracker.setValue('');}el.dispatchEvent(new Event('input',{bubbles:true}));}}else{el.focus();var nativeSetter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value');if(nativeSetter&&nativeSetter.set)nativeSetter.set.call(el,'');else el.value='';var tracker=el._valueTracker;if(tracker){tracker.setValue('');}el.dispatchEvent(new Event('input',{bubbles:true}));el.select();var ok=false;try{document.execCommand('selectAll');}catch(e){}try{ok=document.execCommand('insertText',false,val);}catch(e){}if(!ok){if(nativeSetter&&nativeSetter.set)nativeSetter.set.call(el,val);else el.value=val;var tracker2=el._valueTracker;if(tracker2){tracker2.setValue('');}el.dispatchEvent(new Event('input',{bubbles:true}));}}el.dispatchEvent(new Event('change',{bubbles:true}));el.dispatchEvent(new Event('blur',{bubbles:true}));}function setItemContent(li,text){var inputs=li.querySelectorAll('input');var selects=li.querySelectorAll('select');var textareas=li.querySelectorAll('textarea');if(inputs.length>0)for(var i=0;i<inputs.length;i++)setElementValue(inputs[i],text);if(selects.length>0)for(var i=0;i<selects.length;i++)setElementValue(selects[i],text);if(textareas.length>0)for(var i=0;i<textareas.length;i++)setElementValue(textareas[i],text);if(inputs.length===0&&selects.length===0&&textareas.length===0){li.textContent=text;}}var existingItems=list.querySelectorAll(':scope > li');for(var i=0;i<newItems.length;i++){if(i<existingItems.length){setItemContent(existingItems[i],newItems[i]);}else{var li=document.createElement('li');li.textContent=newItems[i];list.appendChild(li);}}for(var i=existingItems.length-1;i>=newItems.length;i--){existingItems[i].remove();}})();`
+        await new Promise<void>((resolve, reject) => {
+          chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+            expression: syncCode,
+            returnByValue: true,
+          }, () => {
+            if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message))
+            else resolve()
+          })
+        })
+        if (!wasAttached) {
+          await new Promise<void>((resolve) => {
+            chrome.debugger.detach({ tabId }, () => {
+              debuggerTabs.delete(tabId)
+              if (debuggerTabs.size === 0) stopKeepalive()
+              resolve()
+            })
+          })
+        }
         sendResponse({ success: true })
-      }).catch((e) => {
-        sendResponse({ success: false, error: e.message || '脚本注入失败' })
-      })
+      } catch (e: any) {
+        if (!wasAttached && debuggerTabs.has(tabId)) {
+          chrome.debugger.detach({ tabId }, () => {
+            debuggerTabs.delete(tabId)
+            if (debuggerTabs.size === 0) stopKeepalive()
+          })
+        }
+        sendResponse({ success: false, error: e.message || '同步失败' })
+      }
     }).catch(() => {
       sendResponse({ success: false, error: '无法获取标签页' })
     })
