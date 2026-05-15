@@ -5,78 +5,110 @@
   var id = el.getAttribute('data-id') || '';
   var headersStr = el.getAttribute('data-headers') || '[]';
   var rowsStr = el.getAttribute('data-rows') || '[]';
-  var itemsStr = el.getAttribute('data-items')|| '[]';
+  var itemsStr = el.getAttribute('data-items') || '[]';
   el.remove();
 
-  var diag = {
-    type: type, id: id, foundElement: false,
-    rootIds: [], rootTags: [],
-    vue2Root: false, vue3Root: false,
-    reactRoot: false,
-    tableHtml: '', cellSamples: [],
-    allVueKeys: [], allReactKeys: []
-  };
+  var diag = { type: type, id: id, foundElement: false, modified: 0, paths: [], errors: [] };
 
-  var root = document.getElementById('root');
-  var app = document.getElementById('app');
-  var next = document.getElementById('__next');
-  diag.rootIds = [
-    root ? 'root' : '',
-    app ? 'app' : '',
-    next ? '__next' : ''
-  ].filter(function(s) { return s; });
-  if (root) diag.rootTags.push(root.children[0] ? root.children[0].tagName : 'empty');
-  if (app) diag.rootTags.push(app.children[0] ? app.children[0].tagName : 'empty');
-
-  if (root) {
-    var rKeys = Object.keys(root);
-    for (var i = 0; i < rKeys.length; i++) {
-      if (rKeys[i].indexOf('__react') === 0) diag.reactRoot = true;
-      if (rKeys[i].indexOf('__vue') === 0) diag.vue2Root = true;
+  function findVue3App() {
+    var appEl = document.getElementById('app');
+    if (appEl && appEl.__vue_app__) return appEl.__vue_app__;
+    var all = document.querySelectorAll('*');
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].__vue_app__) return all[i].__vue_app__;
     }
-  }
-  if (app) {
-    var aKeys = Object.keys(app);
-    for (var i = 0; i < aKeys.length; i++) {
-      if (aKeys[i].indexOf('__react') === 0) diag.reactRoot = true;
-      if (aKeys[i].indexOf('__vue') === 0) diag.vue2Root = true;
-    }
+    return null;
   }
 
-  var allEl = document.querySelectorAll('*');
-  var vueCount = 0, reactCount = 0;
-  for (var i = 0; i < Math.min(allEl.length, 200); i++) {
-    var keys = Object.keys(allEl[i]);
-    for (var j = 0; j < keys.length; j++) {
-      if (keys[j].indexOf('__vue') === 0) { vueCount++; if (diag.allVueKeys.indexOf(keys[j]) === -1 && diag.allVueKeys.length < 5) diag.allVueKeys.push(keys[j]); }
-      if (keys[j].indexOf('__react') === 0) { reactCount++; if (diag.allReactKeys.indexOf(keys[j]) === -1 && diag.allReactKeys.length < 5) diag.allReactKeys.push(keys[j]); }
+  function walkVue3Components(instance, depth, callback) {
+    if (!instance || depth > 15) return;
+    try { callback(instance); } catch(e) {}
+    if (instance.subTree && instance.subTree.component) {
+      walkVue3Components(instance.subTree.component, depth + 1, callback);
     }
-  }
-  diag.vueCount = vueCount;
-  diag.reactCount = reactCount;
-
-  function setCell(cell, text) {
-    var sample = {
-      text: text,
-      html: cell.innerHTML.substring(0, 200),
-      children: cell.children.length,
-      childTags: []
-    };
-    for (var i = 0; i < Math.min(cell.children.length, 5); i++) {
-      sample.childTags.push(cell.children[i].tagName + (cell.children[i].className ? '.' + cell.children[i].className.split(' ')[0] : ''));
-    }
-    var keys = Object.keys(cell);
-    var specialKeys = [];
-    for (var i = 0; i < keys.length; i++) {
-      if (keys[i].indexOf('__vue') === 0 || keys[i].indexOf('__react') === 0 || keys[i].indexOf('data-v') === 0) {
-        specialKeys.push(keys[i]);
+    if (instance.subTree && instance.subTree.children) {
+      var children = instance.subTree.children;
+      if (Array.isArray(children)) {
+        for (var i = 0; i < children.length; i++) {
+          if (children[i] && children[i].component) {
+            walkVue3Components(children[i].component, depth + 1, callback);
+          }
+        }
       }
     }
-    sample.specialKeys = specialKeys.slice(0, 5);
+    if (instance.subTree && instance.subTree.dynamicChildren) {
+      var dc = instance.subTree.dynamicChildren;
+      for (var i = 0; i < dc.length; i++) {
+        if (dc[i] && dc[i].component) {
+          walkVue3Components(dc[i].component, depth + 1, callback);
+        }
+      }
+    }
+  }
 
+  function findAndModifyVue3Data(app, oldVal, newVal) {
+    var found = false;
+    var rootInstance = app._instance;
+    if (!rootInstance) return false;
+
+    walkVue3Components(rootInstance, 0, function(instance) {
+      if (found) return;
+      var proxy = instance.proxy;
+      if (!proxy) return;
+
+      var dataSources = [];
+      try { if (instance.setupState) dataSources.push(instance.setupState); } catch(e) {}
+      try { if (proxy.$data) dataSources.push(proxy.$data); } catch(e) {}
+      try { dataSources.push(proxy); } catch(e) {}
+
+      for (var di = 0; di < dataSources.length; di++) {
+        if (found) break;
+        var ds = dataSources[di];
+        try {
+          var keys = Object.keys(ds);
+          for (var ki = 0; ki < keys.length; ki++) {
+            if (found) break;
+            var key = keys[ki];
+            try {
+              var val = ds[key];
+              if (Array.isArray(val)) {
+                for (var ri = 0; ri < val.length; ri++) {
+                  if (found) break;
+                  if (typeof val[ri] === 'object' && val[ri] !== null) {
+                    var props = Object.keys(val[ri]);
+                    for (var pi = 0; pi < props.length; pi++) {
+                      var prop = props[pi];
+                      try {
+                        if (String(val[ri][prop]) === String(oldVal)) {
+                          val[ri][prop] = newVal;
+                          found = true;
+                          diag.modified++;
+                          diag.paths.push(key + '[' + ri + '].' + prop + '=' + oldVal + '->' + newVal);
+                          break;
+                        }
+                      } catch(e) {}
+                    }
+                  } else if (String(val[ri]) === String(oldVal)) {
+                    val[ri] = newVal;
+                    found = true;
+                    diag.modified++;
+                    diag.paths.push(key + '[' + ri + ']=' + oldVal + '->' + newVal);
+                  }
+                }
+              }
+            } catch(e) {}
+          }
+        } catch(e) {}
+      }
+    });
+    return found;
+  }
+
+  function setCell(cell, text) {
     var ins = cell.querySelectorAll('input');
     var sels = cell.querySelectorAll('select');
     var tas = cell.querySelectorAll('textarea');
+
     if (ins.length > 0) {
       for (var i = 0; i < ins.length; i++) {
         ins[i].focus();
@@ -86,8 +118,7 @@
         ins[i].dispatchEvent(new Event('input', { bubbles: true }));
         ins[i].dispatchEvent(new Event('change', { bubbles: true }));
       }
-    }
-    if (sels.length > 0) {
+    } else if (sels.length > 0) {
       for (var i = 0; i < sels.length; i++) {
         var found = false;
         for (var j = 0; j < sels[i].options.length; j++) {
@@ -100,8 +131,7 @@
         sels[i].dispatchEvent(new Event('input', { bubbles: true }));
         sels[i].dispatchEvent(new Event('change', { bubbles: true }));
       }
-    }
-    if (tas.length > 0) {
+    } else if (tas.length > 0) {
       for (var i = 0; i < tas.length; i++) {
         tas[i].focus();
         var ns = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
@@ -110,11 +140,23 @@
         tas[i].dispatchEvent(new Event('input', { bubbles: true }));
         tas[i].dispatchEvent(new Event('change', { bubbles: true }));
       }
+    } else {
+      var spans = cell.querySelectorAll('span');
+      var oldText = cell.textContent.trim();
+      if (spans.length > 0) {
+        for (var i = 0; i < spans.length; i++) {
+          if (spans[i].textContent.trim() === oldText) {
+            spans[i].textContent = text;
+          }
+        }
+      } else {
+        cell.textContent = text;
+      }
+      var app = findVue3App();
+      if (app) {
+        findAndModifyVue3Data(app, oldText, text);
+      }
     }
-    if (!ins.length && !sels.length && !tas.length) {
-      cell.textContent = text;
-    }
-    diag.cellSamples.push(sample);
   }
 
   if (type === 'table') {
@@ -124,7 +166,6 @@
     if (!table) { var allT = document.querySelectorAll('table'); table = allT.length > 0 ? allT[0] : null; }
     if (!table) return { ok: false, err: 'table not found', diag: diag };
     diag.foundElement = true;
-    diag.tableHtml = table.outerHTML.substring(0, 500);
     if (newHeaders.length > 0) {
       var hc = table.querySelectorAll('thead th, thead td');
       for (var i = 0; i < newHeaders.length && i < hc.length; i++) setCell(hc[i], newHeaders[i]);

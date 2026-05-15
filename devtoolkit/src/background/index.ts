@@ -289,16 +289,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         return { success: false, error: val.err || '同步失败' }
       } else if (val && val.ok === true && val.diag) {
         const d = val.diag
-        let info = `roots:[${d.rootIds.join(',')}]`
-        info += ` vue:${d.vueCount} react:${d.reactCount}`
-        if (d.allVueKeys.length > 0) info += ` vueKeys:[${d.allVueKeys.join(',')}]`
-        if (d.allReactKeys.length > 0) info += ` reactKeys:[${d.allReactKeys.join(',')}]`
-        if (d.cellSamples.length > 0) {
-          const s = d.cellSamples[0]
-          info += ` cell1:children=${s.children} tags:[${s.childTags.join(',')}]`
-          if (s.specialKeys && s.specialKeys.length > 0) info += ` specKeys:[${s.specialKeys.join(',')}]`
-          info += ` html:${s.html.substring(0, 100)}`
-        }
+        let info = `修改Vue数据:${d.modified}项`
+        if (d.paths.length > 0) info += ` [${d.paths.slice(0, 3).join(', ')}]`
+        if (d.errors.length > 0) info += ` 错误:${d.errors.length}`
         return { success: true, info }
       } else {
         return { success: true, info: JSON.stringify(val).substring(0, 300) }
