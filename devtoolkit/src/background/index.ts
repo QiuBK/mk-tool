@@ -244,37 +244,54 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           const table = document.querySelector(`table[data-devtoolkit-id="${id}"]`) as HTMLTableElement | null
           if (!table) return { ok: false, msg: `找不到标记为${id}的表格` }
 
+          function setReactValue(el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement, value: string) {
+            const proto = Object.getPrototypeOf(el)
+            const descriptor = Object.getOwnPropertyDescriptor(proto, 'value')
+            if (descriptor && descriptor.set) {
+              descriptor.set.call(el, value)
+            } else {
+              el.value = value
+            }
+            el.dispatchEvent(new Event('input', { bubbles: true }))
+            el.dispatchEvent(new Event('change', { bubbles: true }))
+          }
+
           function setCellContent(cell: Element, text: string) {
             const inputs = cell.querySelectorAll('input')
             const selects = cell.querySelectorAll('select')
             const textareas = cell.querySelectorAll('textarea')
             if (inputs.length > 0) {
               inputs.forEach((input) => {
-                input.value = text
-                input.setAttribute('value', text)
-                input.dispatchEvent(new Event('input', { bubbles: true }))
-                input.dispatchEvent(new Event('change', { bubbles: true }))
+                setReactValue(input, text)
               })
             }
             if (selects.length > 0) {
               selects.forEach((sel) => {
+                let found = false
                 const options = sel.querySelectorAll('option')
                 options.forEach((opt) => {
                   if (opt.textContent?.trim() === text || opt.value === text) {
                     opt.selected = true
                     opt.setAttribute('selected', 'selected')
+                    found = true
+                  } else {
+                    opt.selected = false
+                    opt.removeAttribute('selected')
                   }
                 })
-                sel.value = text
-                sel.dispatchEvent(new Event('change', { bubbles: true }))
+                if (!found) {
+                  const newOpt = document.createElement('option')
+                  newOpt.value = text
+                  newOpt.textContent = text
+                  newOpt.selected = true
+                  sel.appendChild(newOpt)
+                }
+                setReactValue(sel, text)
               })
             }
             if (textareas.length > 0) {
               textareas.forEach((ta) => {
-                ta.value = text
-                ta.textContent = text
-                ta.dispatchEvent(new Event('input', { bubbles: true }))
-                ta.dispatchEvent(new Event('change', { bubbles: true }))
+                setReactValue(ta, text)
               })
             }
             if (inputs.length === 0 && selects.length === 0 && textareas.length === 0) {
@@ -352,30 +369,54 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           const list = document.querySelector(`ul[data-devtoolkit-id="${id}"], ol[data-devtoolkit-id="${id}"]`) as HTMLUListElement | HTMLOListElement | null
           if (!list) return { ok: false, msg: `找不到标记为${id}的列表` }
 
+          function setReactValue(el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement, value: string) {
+            const proto = Object.getPrototypeOf(el)
+            const descriptor = Object.getOwnPropertyDescriptor(proto, 'value')
+            if (descriptor && descriptor.set) {
+              descriptor.set.call(el, value)
+            } else {
+              el.value = value
+            }
+            el.dispatchEvent(new Event('input', { bubbles: true }))
+            el.dispatchEvent(new Event('change', { bubbles: true }))
+          }
+
           function setItemContent(li: Element, text: string) {
             const inputs = li.querySelectorAll('input')
             const selects = li.querySelectorAll('select')
             const textareas = li.querySelectorAll('textarea')
             if (inputs.length > 0) {
               inputs.forEach((input) => {
-                input.value = text
-                input.setAttribute('value', text)
-                input.dispatchEvent(new Event('input', { bubbles: true }))
-                input.dispatchEvent(new Event('change', { bubbles: true }))
+                setReactValue(input, text)
               })
             }
             if (selects.length > 0) {
               selects.forEach((sel) => {
-                sel.value = text
-                sel.dispatchEvent(new Event('change', { bubbles: true }))
+                let found = false
+                const options = sel.querySelectorAll('option')
+                options.forEach((opt) => {
+                  if (opt.textContent?.trim() === text || opt.value === text) {
+                    opt.selected = true
+                    opt.setAttribute('selected', 'selected')
+                    found = true
+                  } else {
+                    opt.selected = false
+                    opt.removeAttribute('selected')
+                  }
+                })
+                if (!found) {
+                  const newOpt = document.createElement('option')
+                  newOpt.value = text
+                  newOpt.textContent = text
+                  newOpt.selected = true
+                  sel.appendChild(newOpt)
+                }
+                setReactValue(sel, text)
               })
             }
             if (textareas.length > 0) {
               textareas.forEach((ta) => {
-                ta.value = text
-                ta.textContent = text
-                ta.dispatchEvent(new Event('input', { bubbles: true }))
-                ta.dispatchEvent(new Event('change', { bubbles: true }))
+                setReactValue(ta, text)
               })
             }
             if (inputs.length === 0 && selects.length === 0 && textareas.length === 0) {
