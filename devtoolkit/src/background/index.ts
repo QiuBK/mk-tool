@@ -20,6 +20,30 @@ const debuggerTabs: Set<number> = new Set()
 const pendingExtraHeaders: Map<string, Record<string, string>> = new Map()
 const MAX_CAPTURED = 200
 
+function normalizeHeaderKey(k: string): string {
+  return k.toLowerCase()
+}
+
+function mergeHeaders(
+  target: Record<string, string>,
+  source: Record<string, string>,
+  override: boolean = false,
+): Record<string, string> {
+  const targetNormMap = new Map<string, string>()
+  for (const k of Object.keys(target)) {
+    targetNormMap.set(normalizeHeaderKey(k), k)
+  }
+  for (const [k, v] of Object.entries(source)) {
+    const nk = normalizeHeaderKey(k)
+    const existingKey = targetNormMap.get(nk)
+    if (existingKey && !override) continue
+    if (existingKey) delete target[existingKey]
+    target[k] = v
+    targetNormMap.set(nk, k)
+  }
+  return target
+}
+
 function applyMode(mode: string) {
   if (mode === 'sidepanel') {
     chrome.action.setPopup({ popup: '' })
@@ -52,6 +76,38 @@ chrome.action.onClicked.addListener((tab) => {
     }
   })
 })
+
+function startKeepalive() {
+  chrome.alarms.create('devtoolkit-keepalive', { periodInMinutes: 0.4 })
+}
+
+function stopKeepalive() {
+  chrome.alarms.clear('devtoolkit-keepalive')
+}
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === 'devtoolkit-keepalive') {
+    if (debuggerTabs.size === 0) {
+      stopKeepalive()
+    }
+  }
+})
+
+function persistDebuggerTabs() {
+  chrome.storage.session.set({ 'devtoolkit-debugger-tabs': Array.from(debuggerTabs) })
+}
+
+function restoreDebuggerTabs() {
+  chrome.storage.session.get('devtoolkit-debugger-tabs', (result) => {
+    const tabs = result['devtoolkit-debugger-tabs'] as number[] | undefined
+    if (tabs) {
+      tabs.forEach((t) => debuggerTabs.add(t))
+      if (debuggerTabs.size > 0) startKeepalive()
+    }
+  })
+}
+
+restoreDebuggerTabs()
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'setDisplayMode') {
@@ -102,6 +158,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         const msg = chrome.runtime.lastError.message || ''
         if (msg.includes('already attached')) {
           debuggerTabs.add(tabId)
+          persistDebuggerTabs()
+          startKeepalive()
           sendResponse({ ok: true })
           return
         }
@@ -109,7 +167,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         return
       }
       debuggerTabs.add(tabId)
-      chrome.debugger.sendCommand({ tabId }, 'Network.enable', { maxPostDataSize: 10485760 }, () => {
+      persistDebuggerTabs()
+      startKeepalive()
+      chrome.debugger.sendCommand({ tabId }, 'Network.enable', {}, () => {
         if (chrome.runtime.lastError) {
           sendResponse({ ok: false, error: chrome.runtime.lastError.message })
           return
@@ -124,6 +184,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     const tabId = message.tabId as number
     chrome.debugger.detach({ tabId }, () => {
       debuggerTabs.delete(tabId)
+      persistDebuggerTabs()
+      if (debuggerTabs.size === 0) stopKeepalive()
       sendResponse({ ok: true })
     })
     return true
@@ -157,6 +219,28 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
   const tabId = source.tabId
   const p = params as any
 
+  if (method === 'Network.requestWillBeSentExtraInfo') {
+    const extraHeaders: Record<string, string> = {}
+    if (p.headers) {
+      for (const [k, v] of Object.entries(p.headers)) {
+        extraHeaders[k] = String(v)
+      }
+    }
+
+    const list = capturedRequests.get(tabId)
+    const entry = list?.find(r => r.id === p.requestId)
+    if (entry) {
+      mergeHeaders(entry.headers, extraHeaders, true)
+    } else {
+      const existing = pendingExtraHeaders.get(p.requestId)
+      if (existing) {
+        mergeHeaders(existing, extraHeaders, true)
+      } else {
+        pendingExtraHeaders.set(p.requestId, extraHeaders)
+      }
+    }
+  }
+
   if (method === 'Network.requestWillBeSent') {
     const reqType = p.type as string
     if (reqType !== 'XHR' && reqType !== 'Fetch') return
@@ -170,9 +254,7 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
 
     const extraHeaders = pendingExtraHeaders.get(p.requestId)
     if (extraHeaders) {
-      for (const [k, v] of Object.entries(extraHeaders)) {
-        if (!headers[k]) headers[k] = v
-      }
+      mergeHeaders(headers, extraHeaders, true)
       pendingExtraHeaders.delete(p.requestId)
     }
 
@@ -188,12 +270,9 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
     if (existing) {
       existing.url = p.request.url
       existing.method = p.request.method
-      existing.headers = headers
+      mergeHeaders(existing.headers, headers, false)
       existing.requestBody = requestBody
       existing.contentType = ct
-      existing.status = null
-      existing.responseHeaders = {}
-      existing.responseBody = null
       return
     }
 
@@ -218,25 +297,6 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
     const list = capturedRequests.get(tabId)!
     list.unshift(entry)
     if (list.length > MAX_CAPTURED) list.length = MAX_CAPTURED
-  }
-
-  if (method === 'Network.requestWillBeSentExtraInfo') {
-    const extraHeaders: Record<string, string> = {}
-    if (p.headers) {
-      for (const [k, v] of Object.entries(p.headers)) {
-        extraHeaders[k] = String(v)
-      }
-    }
-
-    const list = capturedRequests.get(tabId)
-    const entry = list?.find(r => r.id === p.requestId)
-    if (entry) {
-      for (const [k, v] of Object.entries(extraHeaders)) {
-        if (!entry.headers[k]) entry.headers[k] = v
-      }
-    } else {
-      pendingExtraHeaders.set(p.requestId, extraHeaders)
-    }
   }
 
   if (method === 'Network.responseReceived') {
@@ -296,12 +356,18 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
 chrome.debugger.onDetach.addListener((source) => {
   if (source.tabId) {
     debuggerTabs.delete(source.tabId)
+    persistDebuggerTabs()
+    if (debuggerTabs.size === 0) stopKeepalive()
   }
 })
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   capturedRequests.delete(tabId)
-  debuggerTabs.delete(tabId)
+  if (debuggerTabs.has(tabId)) {
+    debuggerTabs.delete(tabId)
+    persistDebuggerTabs()
+    if (debuggerTabs.size === 0) stopKeepalive()
+  }
 })
 
 chrome.windows.onRemoved.addListener((windowId) => {

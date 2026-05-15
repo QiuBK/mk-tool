@@ -67,14 +67,21 @@ export function ScraperTool() {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
         if (tab?.id) {
           if (tab.url?.startsWith('chrome://') || tab.url?.startsWith('edge://') || tab.url?.startsWith('about:')) {
-            setCaptureError('无法在浏览器内部页面上抓包')
+            setCaptureError('无法在浏览器内部页面上抓包，请切换到普通网页')
             return
           }
           const res = await startCapture(tab.id)
           if (res.ok) {
             setCapturing(true)
           } else {
-            setCaptureError(res.error || '无法开始抓包')
+            const errMsg = res.error || '无法开始抓包'
+            if (errMsg.includes('Cannot access') || errMsg.includes('permission')) {
+              setCaptureError('权限不足：请确保扩展有调试权限，且目标页面未打开 DevTools')
+            } else if (errMsg.includes('already attached')) {
+              setCapturing(true)
+            } else {
+              setCaptureError(`抓包启动失败：${errMsg}`)
+            }
           }
         }
       }
@@ -351,7 +358,7 @@ export function ScraperTool() {
               </div>
               {capturing && (
                 <div className={styles.captureStatus}>
-                  🔴 正在监听接口请求...（页面顶部会出现调试提示栏）
+                  🔴 正在监听 XHR/Fetch 请求...（页面顶部会出现「扩展正在调试此浏览器」提示栏，请勿关闭）
                 </div>
               )}
               {captureError && <div className={styles.error}>{captureError}</div>}
