@@ -92,20 +92,26 @@ chrome.action.onClicked.addListener((tab) => {
 })
 
 function startKeepalive() {
-  chrome.alarms.create('devtoolkit-keepalive', { periodInMinutes: 0.4 })
+  try {
+    chrome.alarms.create('devtoolkit-keepalive', { periodInMinutes: 0.4 })
+  } catch { /* ignore */ }
 }
 
 function stopKeepalive() {
-  chrome.alarms.clear('devtoolkit-keepalive')
+  try {
+    chrome.alarms.clear('devtoolkit-keepalive')
+  } catch { /* ignore */ }
 }
 
-chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === 'devtoolkit-keepalive') {
-    if (debuggerTabs.size === 0) {
-      stopKeepalive()
+try {
+  chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === 'devtoolkit-keepalive') {
+      if (debuggerTabs.size === 0) {
+        stopKeepalive()
+      }
     }
-  }
-})
+  })
+} catch { /* ignore */ }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'setDisplayMode') {
@@ -226,151 +232,155 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   return false
 })
 
-chrome.debugger.onEvent.addListener((source, method, params) => {
-  if (!source.tabId) return
-  const tabId = source.tabId
-  const p = params as any
+try {
+  chrome.debugger.onEvent.addListener((source, method, params) => {
+    if (!source.tabId) return
+    const tabId = source.tabId
+    const p = params as any
 
-  if (method === 'Network.requestWillBeSentExtraInfo') {
-    const extraHeaders: Record<string, string> = {}
-    if (p.headers) {
-      for (const [k, v] of Object.entries(p.headers)) {
-        extraHeaders[k] = String(v)
-      }
-    }
-
-    const list = capturedRequests.get(tabId)
-    const entry = list?.find(r => r.id === p.requestId)
-    if (entry) {
-      mergeHeaders(entry.headers, extraHeaders, true)
-    } else {
-      const existing = pendingExtraHeaders.get(p.requestId)
-      if (existing) {
-        mergeHeaders(existing, extraHeaders, true)
-      } else {
-        pendingExtraHeaders.set(p.requestId, extraHeaders)
-      }
-    }
-  }
-
-  if (method === 'Network.requestWillBeSent') {
-    const reqType = p.type as string
-    if (reqType !== 'XHR' && reqType !== 'Fetch') return
-
-    const headers: Record<string, string> = {}
-    if (p.request?.headers) {
-      for (const [k, v] of Object.entries(p.request.headers)) {
-        headers[k] = String(v)
-      }
-    }
-
-    const extraHeaders = pendingExtraHeaders.get(p.requestId)
-    if (extraHeaders) {
-      mergeHeaders(headers, extraHeaders, true)
-      pendingExtraHeaders.delete(p.requestId)
-    }
-
-    let requestBody: string | null = null
-    if (p.request?.postData) {
-      requestBody = p.request.postData
-    }
-
-    const ct = headers['Content-Type'] || headers['content-type'] || null
-
-    const existingList = capturedRequests.get(tabId)
-    const existing = existingList?.find(r => r.id === p.requestId)
-    if (existing) {
-      existing.url = p.request.url
-      existing.method = p.request.method
-      mergeHeaders(existing.headers, headers, false)
-      existing.requestBody = requestBody
-      existing.contentType = ct
-      return
-    }
-
-    const entry: CapturedEntry = {
-      id: p.requestId,
-      url: p.request.url,
-      method: p.request.method,
-      type: reqType === 'Fetch' ? 'fetch' : 'xhr',
-      timestamp: p.wallTime ? p.wallTime * 1000 : Date.now(),
-      requestBody,
-      contentType: ct,
-      headers,
-      status: null,
-      tabId,
-      responseHeaders: {},
-      responseBody: null,
-    }
-
-    if (!capturedRequests.has(tabId)) {
-      capturedRequests.set(tabId, [])
-    }
-    const list = capturedRequests.get(tabId)!
-    list.unshift(entry)
-    if (list.length > MAX_CAPTURED) list.length = MAX_CAPTURED
-  }
-
-  if (method === 'Network.responseReceived') {
-    const list = capturedRequests.get(tabId)
-    if (!list) return
-
-    const entry = list.find(r => r.id === p.requestId)
-    if (!entry) return
-
-    const respHeaders: Record<string, string> = {}
-    if (p.response?.headers) {
-      for (const [k, v] of Object.entries(p.response.headers)) {
-        respHeaders[k] = String(v)
-      }
-    }
-
-    entry.status = p.response?.status || null
-    entry.responseHeaders = respHeaders
-  }
-
-  if (method === 'Network.loadingFinished') {
-    const list = capturedRequests.get(tabId)
-    if (!list) return
-
-    const entry = list.find(r => r.id === p.requestId)
-    if (!entry) return
-
-    chrome.debugger.sendCommand(source, 'Network.getResponseBody', {
-      requestId: p.requestId,
-    }, (result: any) => {
-      if (chrome.runtime.lastError) return
-      if (result?.body) {
-        if (result.base64Encoded) {
-          try {
-            entry.responseBody = atob(result.body)
-          } catch {
-            entry.responseBody = '[Binary Data]'
-          }
-        } else {
-          entry.responseBody = result.body
+    if (method === 'Network.requestWillBeSentExtraInfo') {
+      const extraHeaders: Record<string, string> = {}
+      if (p.headers) {
+        for (const [k, v] of Object.entries(p.headers)) {
+          extraHeaders[k] = String(v)
         }
       }
-    })
-  }
 
-  if (method === 'Network.loadingFailed') {
-    const list = capturedRequests.get(tabId)
-    if (!list) return
-
-    const entry = list.find(r => r.id === p.requestId)
-    if (entry && entry.status === null) {
-      entry.status = 0
+      const list = capturedRequests.get(tabId)
+      const entry = list?.find(r => r.id === p.requestId)
+      if (entry) {
+        mergeHeaders(entry.headers, extraHeaders, true)
+      } else {
+        const existing = pendingExtraHeaders.get(p.requestId)
+        if (existing) {
+          mergeHeaders(existing, extraHeaders, true)
+        } else {
+          pendingExtraHeaders.set(p.requestId, extraHeaders)
+        }
+      }
     }
-  }
-})
 
-chrome.debugger.onDetach.addListener((source) => {
-  if (source.tabId) {
-    debuggerTabs.delete(source.tabId)
-    if (debuggerTabs.size === 0) stopKeepalive()
-  }
-})
+    if (method === 'Network.requestWillBeSent') {
+      const reqType = p.type as string
+      if (reqType !== 'XHR' && reqType !== 'Fetch') return
+
+      const headers: Record<string, string> = {}
+      if (p.request?.headers) {
+        for (const [k, v] of Object.entries(p.request.headers)) {
+          headers[k] = String(v)
+        }
+      }
+
+      const extraHeaders = pendingExtraHeaders.get(p.requestId)
+      if (extraHeaders) {
+        mergeHeaders(headers, extraHeaders, true)
+        pendingExtraHeaders.delete(p.requestId)
+      }
+
+      let requestBody: string | null = null
+      if (p.request?.postData) {
+        requestBody = p.request.postData
+      }
+
+      const ct = headers['Content-Type'] || headers['content-type'] || null
+
+      const existingList = capturedRequests.get(tabId)
+      const existing = existingList?.find(r => r.id === p.requestId)
+      if (existing) {
+        existing.url = p.request.url
+        existing.method = p.request.method
+        mergeHeaders(existing.headers, headers, false)
+        existing.requestBody = requestBody
+        existing.contentType = ct
+        return
+      }
+
+      const entry: CapturedEntry = {
+        id: p.requestId,
+        url: p.request.url,
+        method: p.request.method,
+        type: reqType === 'Fetch' ? 'fetch' : 'xhr',
+        timestamp: p.wallTime ? p.wallTime * 1000 : Date.now(),
+        requestBody,
+        contentType: ct,
+        headers,
+        status: null,
+        tabId,
+        responseHeaders: {},
+        responseBody: null,
+      }
+
+      if (!capturedRequests.has(tabId)) {
+        capturedRequests.set(tabId, [])
+      }
+      const list = capturedRequests.get(tabId)!
+      list.unshift(entry)
+      if (list.length > MAX_CAPTURED) list.length = MAX_CAPTURED
+    }
+
+    if (method === 'Network.responseReceived') {
+      const list = capturedRequests.get(tabId)
+      if (!list) return
+
+      const entry = list.find(r => r.id === p.requestId)
+      if (!entry) return
+
+      const respHeaders: Record<string, string> = {}
+      if (p.response?.headers) {
+        for (const [k, v] of Object.entries(p.response.headers)) {
+          respHeaders[k] = String(v)
+        }
+      }
+
+      entry.status = p.response?.status || null
+      entry.responseHeaders = respHeaders
+    }
+
+    if (method === 'Network.loadingFinished') {
+      const list = capturedRequests.get(tabId)
+      if (!list) return
+
+      const entry = list.find(r => r.id === p.requestId)
+      if (!entry) return
+
+      chrome.debugger.sendCommand(source, 'Network.getResponseBody', {
+        requestId: p.requestId,
+      }, (result: any) => {
+        if (chrome.runtime.lastError) return
+        if (result?.body) {
+          if (result.base64Encoded) {
+            try {
+              entry.responseBody = atob(result.body)
+            } catch {
+              entry.responseBody = '[Binary Data]'
+            }
+          } else {
+            entry.responseBody = result.body
+          }
+        }
+      })
+    }
+
+    if (method === 'Network.loadingFailed') {
+      const list = capturedRequests.get(tabId)
+      if (!list) return
+
+      const entry = list.find(r => r.id === p.requestId)
+      if (entry && entry.status === null) {
+        entry.status = 0
+      }
+    }
+  })
+} catch { /* ignore */ }
+
+try {
+  chrome.debugger.onDetach.addListener((source) => {
+    if (source.tabId) {
+      debuggerTabs.delete(source.tabId)
+      if (debuggerTabs.size === 0) stopKeepalive()
+    }
+  })
+} catch { /* ignore */ }
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   capturedRequests.delete(tabId)
