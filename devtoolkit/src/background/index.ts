@@ -291,14 +291,19 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         const d = val.diag
         let info = `修改:${d.modified}项`
         if (d.paths.length > 0) info += ` [${d.paths.slice(0, 3).join(',')}]`
-        info += ` stores:[${d.storeList.join(',')}]`
-        if (d.stateSamples.length > 0) {
-          const s = d.stateSamples[0]
-          info += ` ${s.store}.$state keys:[${s.stateKeys.slice(0, 8).join(',')}]`
-          const dataKey = Object.keys(s).find(k => k !== 'store' && k !== 'stateKeys' && !k.endsWith('_objKeys') && !k.endsWith('_sample'))
-          if (dataKey) info += ` ${dataKey}=${s[dataKey]}`
-          const sampleKeys = Object.keys(s).filter(k => k.endsWith('_sample'))
-          if (sampleKeys.length > 0) info += ` data:${JSON.stringify(s[sampleKeys[0]]).substring(0, 100)}`
+        const stores = d.allStores
+        const storeNames = Object.keys(stores)
+        for (const sn of storeNames) {
+          const s = stores[sn]
+          const arrKeys = Object.keys(s).filter(k => typeof s[k] === 'string' && s[k].startsWith('Array('))
+          if (arrKeys.length > 0) {
+            info += ` ${sn}:`
+            for (const ak of arrKeys) {
+              info += `${ak}=${s[ak]}`
+              if (s[ak + '_keys']) info += `[${s[ak + '_keys'].join(',')}]`
+              if (s[ak + '_sample']) info += `sample:${JSON.stringify(s[ak + '_sample']).substring(0, 80)}`
+            }
+          }
         }
         return { success: true, info }
       } else {

@@ -8,7 +8,7 @@
   var itemsStr = el.getAttribute('data-items') || '[]';
   el.remove();
 
-  var diag = { type: type, id: id, foundElement: false, modified: 0, paths: [], storeList: [], stateSamples: [] };
+  var diag = { type: type, id: id, foundElement: false, modified: 0, paths: [], allStores: {} };
 
   function findVue3App() {
     var appEl = document.getElementById('app');
@@ -22,6 +22,57 @@
 
   var appResult = findVue3App();
 
+  function inspectStore(store, storeName) {
+    var info = { name: storeName };
+    var state = null;
+    try { state = store.$state; } catch(e) { info.stateError = e.message; }
+    if (!state) { info.noState = true; return info; }
+    var stateKeys;
+    try { stateKeys = Object.getOwnPropertyNames(state); } catch(e) { stateKeys = Object.keys(state); }
+    info.stateKeys = stateKeys.slice(0, 20);
+    for (var i = 0; i < Math.min(stateKeys.length, 10); i++) {
+      var key = stateKeys[i];
+      if (key.startsWith('_') || key.startsWith('$')) continue;
+      try {
+        var val = state[key];
+        if (Array.isArray(val)) {
+          info[key] = 'Array(' + val.length + ')';
+          if (val.length > 0 && typeof val[0] === 'object') {
+            info[key + '_keys'] = Object.keys(val[0]).slice(0, 10);
+            if (val.length > 0) {
+              var sample = {};
+              var objKeys = Object.keys(val[0]).slice(0, 6);
+              for (var j = 0; j < objKeys.length; j++) {
+                try { sample[objKeys[j]] = typeof val[0][objKeys[j]] + ':' + String(val[0][objKeys[j]]).substring(0, 25); } catch(e) {}
+              }
+              info[key + '_sample'] = sample;
+            }
+          } else if (val.length > 0) {
+            info[key + '_first'] = typeof val[0] + ':' + String(val[0]).substring(0, 25);
+          }
+        } else if (typeof val === 'object' && val !== null) {
+          var subKeys;
+          try { subKeys = Object.getOwnPropertyNames(val); } catch(e) { subKeys = Object.keys(val); }
+          info[key] = 'Object(' + subKeys.length + ') keys:[' + subKeys.slice(0, 8).join(',') + ']';
+        } else {
+          info[key] = typeof val + ':' + String(val).substring(0, 30);
+        }
+      } catch(e) { info[key] = 'error:' + e.message; }
+    }
+    return info;
+  }
+
+  function collectAllStoreInfo() {
+    if (!appResult) return;
+    try {
+      var pinia = appResult.app.config.globalProperties.$pinia;
+      if (!pinia || !pinia._s) return;
+      pinia._s.forEach(function(store, storeName) {
+        diag.allStores[storeName] = inspectStore(store, storeName);
+      });
+    } catch(e) { diag.piniaError = e.message; }
+  }
+
   function deepSearchAndModify(obj, oldVal, newVal, path, depth) {
     if (!obj || typeof obj !== 'object' || depth > 8) return false;
     try {
@@ -34,9 +85,9 @@
           var cur = obj[key];
           if (cur === oldVal || (typeof cur === 'number' && cur === Number(oldVal)) || (typeof cur !== 'object' && String(cur) === String(oldVal))) {
             var setVal = (typeof cur === 'number') ? Number(newVal) : newVal;
-            try { obj[key] = setVal; } catch(e) { try { obj[key] = setVal; } catch(e2) {} }
+            try { obj[key] = setVal; } catch(e) {}
             diag.modified++;
-            diag.paths.push(path + '.' + key + '=' + oldVal + '->' + newVal + '(t:' + typeof cur + ')');
+            diag.paths.push(path + '.' + key + '=' + oldVal + '->' + newVal);
             return true;
           }
           if (Array.isArray(cur)) {
@@ -47,7 +98,7 @@
                 var setVal2 = (typeof cur[ri] === 'number') ? Number(newVal) : newVal;
                 cur[ri] = setVal2;
                 diag.modified++;
-                diag.paths.push(path + '.' + key + '[' + ri + ']=' + oldVal + '->' + newVal + '(t:' + typeof cur[ri] + ')');
+                diag.paths.push(path + '.' + key + '[' + ri + ']=' + oldVal + '->' + newVal);
                 return true;
               }
             }
@@ -65,47 +116,16 @@
     try {
       var pinia = appResult.app.config.globalProperties.$pinia;
       if (!pinia || !pinia._s) return;
-      var storeNames = [];
-      pinia._s.forEach(function(store, storeName) { storeNames.push(storeName); });
-      diag.storeList = storeNames;
-
       pinia._s.forEach(function(store, storeName) {
         if (diag.modified > 0) return;
-
         var state = null;
         try { state = store.$state; } catch(e) {}
         if (state) {
-          var stateKeys;
-          try { stateKeys = Object.getOwnPropertyNames(state); } catch(e) { stateKeys = Object.keys(state); }
-          if (diag.stateSamples.length < 3) {
-            var sample = { store: storeName, stateKeys: stateKeys.slice(0, 15) };
-            for (var si = 0; si < Math.min(stateKeys.length, 5); si++) {
-              try {
-                var sv = state[stateKeys[si]];
-                if (Array.isArray(sv)) {
-                  sample[stateKeys[si]] = 'Array(' + sv.length + ')';
-                  if (sv.length > 0 && typeof sv[0] === 'object') {
-                    sample[stateKeys[si] + '_objKeys'] = Object.keys(sv[0]).slice(0, 8);
-                    var objSample = {};
-                    var objKeys = Object.keys(sv[0]).slice(0, 5);
-                    for (var oi = 0; oi < objKeys.length; oi++) {
-                      try { objSample[objKeys[oi]] = typeof sv[0][objKeys[oi]] + ':' + String(sv[0][objKeys[oi]]).substring(0, 20); } catch(e) {}
-                    }
-                    sample[stateKeys[si] + '_sample'] = objSample;
-                  }
-                } else {
-                  sample[stateKeys[si]] = typeof sv + ':' + String(sv).substring(0, 30);
-                }
-              } catch(e) {}
-            }
-            diag.stateSamples.push(sample);
-          }
           if (deepSearchAndModify(state, oldVal, newVal, storeName + '.$state', 0)) return;
         }
-
         try { if (deepSearchAndModify(store, oldVal, newVal, storeName, 0)) return; } catch(e) {}
       });
-    } catch(e) { diag.piniaError = e.message; }
+    } catch(e) {}
   }
 
   function setCell(cell, text) {
@@ -146,6 +166,8 @@
       searchAllPiniaStores(oldText, text);
     }
   }
+
+  collectAllStoreInfo();
 
   if (type === 'table') {
     var newHeaders = JSON.parse(headersStr);
