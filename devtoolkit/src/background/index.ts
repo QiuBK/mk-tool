@@ -291,17 +291,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         const d = val.diag
         let info = `修改:${d.modified}项`
         if (d.paths.length > 0) info += ` [${d.paths.slice(0, 3).join(',')}]`
-        if (d.piniaStores.length > 0) {
-          const ps = d.piniaStores[0]
-          info += ` Pinia:${ps.name} keys:[${ps.keys.slice(0, 5).join(',')}]`
-          const sampleKey = Object.keys(ps).find(k => k !== 'name' && k !== 'keys' && !k.endsWith('_keys') && !k.endsWith('_sample'))
-          if (sampleKey) info += ` ${sampleKey}=${ps[sampleKey]}`
-          const sampleKeys2 = Object.keys(ps).filter(k => k.endsWith('_sample'))
-          if (sampleKeys2.length > 0) info += ` sample:${JSON.stringify(ps[sampleKeys2[0]]).substring(0, 80)}`
-        }
-        if (d.componentData.length > 0) {
-          const cd = d.componentData[0]
-          info += ` comp:${cd.source} keys:[${cd.keys.slice(0, 5).join(',')}]`
+        info += ` stores:[${d.storeList.join(',')}]`
+        if (d.stateSamples.length > 0) {
+          const s = d.stateSamples[0]
+          info += ` ${s.store}.$state keys:[${s.stateKeys.slice(0, 8).join(',')}]`
+          const dataKey = Object.keys(s).find(k => k !== 'store' && k !== 'stateKeys' && !k.endsWith('_objKeys') && !k.endsWith('_sample'))
+          if (dataKey) info += ` ${dataKey}=${s[dataKey]}`
+          const sampleKeys = Object.keys(s).filter(k => k.endsWith('_sample'))
+          if (sampleKeys.length > 0) info += ` data:${JSON.stringify(s[sampleKeys[0]]).substring(0, 100)}`
         }
         return { success: true, info }
       } else {
