@@ -69,6 +69,16 @@ function scrapePageFn() {
   return { tables: extractTables(), lists: extractLists(), url: location.href, title: document.title }
 }
 
+export async function expandPagination(): Promise<number> {
+  if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) return 0
+  return new Promise((resolve) => {
+    chrome.runtime.sendMessage({ type: 'expandPagination' }, (response) => {
+      if (chrome.runtime.lastError) { resolve(0); return }
+      resolve(response?.count || 0)
+    })
+  })
+}
+
 export async function scrapeCurrentPage(): Promise<ScrapeResult> {
   if (typeof chrome === 'undefined' || !chrome.tabs || !chrome.scripting) {
     throw new Error('此功能仅在浏览器扩展中可用')
@@ -82,6 +92,11 @@ export async function scrapeCurrentPage(): Promise<ScrapeResult> {
   if (tab.url?.startsWith('chrome://') || tab.url?.startsWith('edge://') || tab.url?.startsWith('about:')) {
     throw new Error('无法访问浏览器内部页面')
   }
+
+  try {
+    await expandPagination()
+    await new Promise(r => setTimeout(r, 1500))
+  } catch {}
 
   const results = await chrome.scripting.executeScript({
     target: { tabId: tab.id },
