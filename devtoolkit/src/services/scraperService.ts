@@ -76,19 +76,20 @@ export interface ExpandPaginationResult {
   storeDetail: string
   domActions: string
   fetchCalled: string
+  emitCalled: string
 }
 
 export async function expandPagination(): Promise<ExpandPaginationResult> {
   if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) {
-    return { count: 0, info: '', debug: '', storeDetail: '', domActions: '', fetchCalled: '' }
+    return { count: 0, info: '', debug: '', storeDetail: '', domActions: '', fetchCalled: '', emitCalled: '' }
   }
   return new Promise((resolve) => {
     chrome.runtime.sendMessage({ type: 'expandPagination' }, (response) => {
       if (chrome.runtime.lastError) {
-        resolve({ count: 0, info: '', debug: '', storeDetail: '', domActions: '', fetchCalled: '' })
+        resolve({ count: 0, info: '', debug: '', storeDetail: '', domActions: '', fetchCalled: '', emitCalled: '' })
         return
       }
-      resolve(response || { count: 0, info: '', debug: '', storeDetail: '', domActions: '', fetchCalled: '' })
+      resolve(response || { count: 0, info: '', debug: '', storeDetail: '', domActions: '', fetchCalled: '', emitCalled: '' })
     })
   })
 }
@@ -113,7 +114,7 @@ export async function scrapeCurrentPage(): Promise<ScrapeResultWithPagination> {
 
   try {
     const paginationResult = await expandPagination()
-    await new Promise(r => setTimeout(r, 2500))
+    await new Promise(r => setTimeout(r, 5000))
     const results = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       func: scrapePageFn,

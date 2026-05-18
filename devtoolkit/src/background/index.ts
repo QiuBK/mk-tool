@@ -292,17 +292,19 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         }).join('\n') : ''
         const domActions = val?.domActions ? val.domActions.join('; ') : ''
         const fetchCalled = val?.fetchCalled ? val.fetchCalled.join('; ') : ''
+        const emitCalled = val?.emitCalled ? val.emitCalled.join('; ') : ''
         let info = found
+        if (emitCalled) info += (info ? ' | ' : '') + 'emit:' + emitCalled
         if (fetchCalled) info += (info ? ' | ' : '') + 'fetch:' + fetchCalled
         if (!info && debug) info = 'debug:' + debug
-        sendResponse({ count, info, debug, storeDetail, domActions, fetchCalled })
+        sendResponse({ count, info, debug, storeDetail, domActions, fetchCalled, emitCalled })
       } catch (e: any) {
         if (debuggerTabs.has(tabId)) {
           try { chrome.debugger.detach({ tabId }, () => { debuggerTabs.delete(tabId); if (debuggerTabs.size === 0) stopKeepalive() }) } catch {}
         }
-        sendResponse({ count: 0, info: e.message, debug: '', storeDetail: '', domActions: '', fetchCalled: '' })
+        sendResponse({ count: 0, info: e.message, debug: '', storeDetail: '', domActions: '', fetchCalled: '', emitCalled: '' })
       }
-    }).catch(() => { sendResponse({ count: 0, info: 'no tab', debug: '', storeDetail: '', domActions: '', fetchCalled: '' }) })
+    }).catch(() => { sendResponse({ count: 0, info: 'no tab', debug: '', storeDetail: '', domActions: '', fetchCalled: '', emitCalled: '' }) })
     return true
   }
 
