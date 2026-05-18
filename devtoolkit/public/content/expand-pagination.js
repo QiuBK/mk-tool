@@ -1,8 +1,8 @@
 (async function(){
-  var result = {count:0, found:[], debug:[], storeDetail:[], domActions:[]};
+  var result = {count:0, found:[], debug:[], storeDetail:[], domActions:[], fetchCalled:[]};
   var pageSizeNames = ['pageSize','limit','perPage','page_size','rowsPerPage','itemsPerPage','pSize','pageLimit','maxPerPage','itemLimit'];
   var pageNumNames = ['currentPage','current','pageNo','pageNum','pageIndex'];
-  var commonPageSizes = [5, 10, 15, 20, 25, 30, 50, 100, 200];
+  var fetchMethodNames = ['getList','fetchList','fetchData','loadData','queryList','queryData','search','refresh','reload','getData','loadList','initData','init','fetch','load','query','getTableData','getPageData','getPage'];
 
   function findApp(){
     var el = document.getElementById('app');
@@ -153,6 +153,36 @@
     return detail;
   }
 
+  function tryCallFetchMethod(comp, compIdx){
+    var sources = [];
+    try { if(comp.setupState) sources.push({name: 'setupState', data: comp.setupState}); } catch(e){}
+    try { if(comp.proxy) sources.push({name: 'proxy', data: comp.proxy}); } catch(e){}
+    try { if(comp.ctx) sources.push({name: 'ctx', data: comp.ctx}); } catch(e){}
+
+    for(var si=0; si<sources.length; si++){
+      var src = sources[si];
+      try {
+        var srcKeys = safeKeys(src.data);
+        for(var fi=0; fi<fetchMethodNames.length; fi++){
+          var mname = fetchMethodNames[fi];
+          if(srcKeys.indexOf(mname) !== -1){
+            try {
+              var method = src.data[mname];
+              if(typeof method === 'function'){
+                method.call(src.data);
+                result.fetchCalled.push('comp['+compIdx+'].'+src.name+'.'+mname);
+                return true;
+              }
+            } catch(e){
+              result.debug.push('fetch_err:comp['+compIdx+'].'+src.name+'.'+mname+':'+e.message);
+            }
+          }
+        }
+      } catch(e){}
+    }
+    return false;
+  }
+
   var app = findApp();
   result.debug.push('app:' + (app ? 'found' : 'not_found'));
 
@@ -201,6 +231,41 @@
             if(comp.proxy && comp.proxy.$data) deepSearch(comp.proxy.$data, 0, 'comp['+ci+'].$data');
           } catch(e){}
         }
+
+        var fetchCalled = false;
+        for(var ci=0; ci<allComps.length; ci++){
+          var comp = allComps[ci];
+          if(tryCallFetchMethod(comp, ci)){
+            fetchCalled = true;
+            break;
+          }
+        }
+        if(!fetchCalled){
+          result.debug.push('no_fetch_method_found_in_components');
+          for(var ci=0; ci<Math.min(allComps.length, 10); ci++){
+            var comp = allComps[ci];
+            var methods = [];
+            try {
+              var sk = safeKeys(comp.setupState);
+              for(var mi=0; mi<sk.length; mi++){
+                if(typeof comp.setupState[sk[mi]] === 'function' && sk[mi].charAt(0) !== '_'){
+                  methods.push(sk[mi]);
+                }
+              }
+            } catch(e){}
+            try {
+              var pk = safeKeys(comp.proxy);
+              for(var mi=0; mi<pk.length; mi++){
+                if(typeof comp.proxy[pk[mi]] === 'function' && pk[mi].charAt(0) !== '_' && pk[mi].charAt(0) !== '$'){
+                  methods.push(pk[mi]);
+                }
+              }
+            } catch(e){}
+            if(methods.length > 0){
+              result.debug.push('comp['+ci+']_methods:'+methods.slice(0,15).join(','));
+            }
+          }
+        }
       }
     } catch(e){
       result.debug.push('comp_err:' + e.message);
@@ -241,46 +306,50 @@
         for(var j=0; j<elSelects.length; j++){
           try {
             var wrapper = elSelects[j].querySelector('.el-select__wrapper');
+            if(!wrapper) wrapper = elSelects[j].querySelector('.el-input__wrapper');
             if(!wrapper) wrapper = elSelects[j].querySelector('.el-input');
             if(!wrapper) wrapper = elSelects[j];
             wrapper.click();
             result.debug.push('el_select_trigger_clicked:'+i+':'+j);
 
-            await new Promise(function(r){ setTimeout(r, 400); });
+            var dropdownFound = false;
+            for(var wait=0; wait<10; wait++){
+              await new Promise(function(r){ setTimeout(r, 200); });
+              var poppers = document.querySelectorAll('.el-select-dropdown, .el-popper, .el-scrollbar__view');
+              for(var k=0; k<poppers.length; k++){
+                var popper = poppers[k];
+                var style = window.getComputedStyle(popper);
+                if(style.display === 'none' || style.visibility === 'hidden') continue;
+                var items = popper.querySelectorAll('.el-select-dropdown__item, .el-option');
+                if(items.length === 0) continue;
 
-            var poppers = document.querySelectorAll('.el-select-dropdown, .el-popper');
-            var clicked = false;
-            for(var k=0; k<poppers.length; k++){
-              var popper = poppers[k];
-              if(popper.style.display === 'none' || popper.offsetParent === null) continue;
-              var items = popper.querySelectorAll('.el-select-dropdown__item');
-              if(items.length === 0) continue;
-
-              var maxItem = null;
-              var maxItemVal = 0;
-              for(var l=0; l<items.length; l++){
-                var itemText = items[l].textContent.trim();
-                var itemVal = Number(itemText);
-                if(!isNaN(itemVal) && itemVal > maxItemVal){
-                  maxItemVal = itemVal;
-                  maxItem = items[l];
+                var maxItem = null;
+                var maxItemVal = 0;
+                for(var l=0; l<items.length; l++){
+                  var itemText = items[l].textContent.trim();
+                  var itemVal = Number(itemText);
+                  if(!isNaN(itemVal) && itemVal > maxItemVal){
+                    maxItemVal = itemVal;
+                    maxItem = items[l];
+                  }
+                }
+                if(maxItem){
+                  maxItem.click();
+                  result.count++;
+                  result.found.push('DOM:el_select->'+maxItemVal);
+                  result.domActions.push('el_select:'+maxItemVal);
+                  dropdownFound = true;
+                  break;
                 }
               }
-              if(maxItem){
-                maxItem.click();
-                result.count++;
-                result.found.push('DOM:el_select->'+maxItemVal);
-                result.domActions.push('el_select:'+maxItemVal);
-                clicked = true;
-                break;
-              }
+              if(dropdownFound) break;
             }
 
-            if(!clicked){
+            if(!dropdownFound){
               result.debug.push('el_select_no_dropdown:'+i+':'+j);
             }
 
-            await new Promise(function(r){ setTimeout(r, 200); });
+            await new Promise(function(r){ setTimeout(r, 300); });
           } catch(e){
             result.debug.push('el_select_err:'+i+':'+j+':'+e.message);
           }
@@ -308,7 +377,7 @@
       var maxOpt = null;
       for(var k=0; k<opts.length; k++){
         var optVal = Number(opts[k].value);
-        if(commonPageSizes.indexOf(optVal) !== -1){
+        if([5,10,15,20,25,30,50,100,200].indexOf(optVal) !== -1){
           hasPageSizeOpts = true;
           if(!maxOpt || optVal > Number(maxOpt.value)) maxOpt = opts[k];
         }

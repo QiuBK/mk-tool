@@ -75,19 +75,20 @@ export interface ExpandPaginationResult {
   debug: string
   storeDetail: string
   domActions: string
+  fetchCalled: string
 }
 
 export async function expandPagination(): Promise<ExpandPaginationResult> {
   if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) {
-    return { count: 0, info: '', debug: '', storeDetail: '', domActions: '' }
+    return { count: 0, info: '', debug: '', storeDetail: '', domActions: '', fetchCalled: '' }
   }
   return new Promise((resolve) => {
     chrome.runtime.sendMessage({ type: 'expandPagination' }, (response) => {
       if (chrome.runtime.lastError) {
-        resolve({ count: 0, info: '', debug: '', storeDetail: '', domActions: '' })
+        resolve({ count: 0, info: '', debug: '', storeDetail: '', domActions: '', fetchCalled: '' })
         return
       }
-      resolve(response || { count: 0, info: '', debug: '', storeDetail: '', domActions: '' })
+      resolve(response || { count: 0, info: '', debug: '', storeDetail: '', domActions: '', fetchCalled: '' })
     })
   })
 }
