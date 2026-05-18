@@ -1,15 +1,14 @@
 (async function(){
   var result = {count:0, found:[], debug:[], storeDetail:[], domActions:[], fetchCalled:[], emitCalled:[]};
-  var pageSizeNames = ['pageSize','limit','perPage','page_size','rowsPerPage','itemsPerPage','pSize','pageLimit','maxPerPage','itemLimit'];
-  var pageNumNames = ['currentPage','current','pageNo','pageNum','pageIndex'];
+  var pageSizeNames = ['pageSize','limit','perPage','page_size','rowsPerPage','itemsPerPage','pSize','pageLimit','maxPerPage','itemLimit','size'];
+  var pageNumNames = ['currentPage','current','pageNo','pageNum','pageIndex','page'];
+  var commonPageSizes = [5, 10, 15, 20, 25, 30, 50, 100, 200, 500];
 
   function findApp(){
     var el = document.getElementById('app');
     if(el && el.__vue_app__) return el.__vue_app__;
     var all = document.querySelectorAll('*');
-    for(var i=0;i<all.length;i++){
-      if(all[i].__vue_app__) return all[i].__vue_app__;
-    }
+    for(var i=0;i<all.length;i++){ if(all[i].__vue_app__) return all[i].__vue_app__; }
     return null;
   }
 
@@ -18,6 +17,10 @@
     try { return Object.getOwnPropertyNames(obj).filter(function(x){return !x.startsWith('__')}); } catch(e) {}
     try { return Object.keys(obj); } catch(e) {}
     return [];
+  }
+
+  function isCommonPageSize(val){
+    return typeof val === 'number' && commonPageSizes.indexOf(val) !== -1;
   }
 
   function deepSearch(obj, depth, path){
@@ -33,20 +36,16 @@
       try {
         var val = obj[key];
         if(val === undefined || val === null || typeof val === 'function') continue;
-        if(typeof val === 'number' && pageSizeNames.indexOf(key) !== -1){
-          if(val < 9999){
-            try { obj[key] = 9999; result.count++; result.found.push(path+'.'+key+'='+val+'->'+obj[key]+'(name)'); }
-            catch(e) { result.debug.push('FAIL:'+path+'.'+key+':'+e.message); }
-          }
+        if(typeof val === 'number' && pageSizeNames.indexOf(key) !== -1 && val < 9999){
+          try { obj[key] = 9999; result.count++; result.found.push(path+'.'+key+'='+val+'->'+obj[key]); }
+          catch(e) { result.debug.push('FAIL:'+path+'.'+key+':'+e.message); }
         }
-        if(typeof val === 'number' && pageNumNames.indexOf(key) !== -1){
-          if(val !== 1){
-            try { obj[key] = 1; result.count++; result.found.push(path+'.'+key+'='+val+'->1(page)'); } catch(e) {}
-          }
+        if(typeof val === 'number' && pageNumNames.indexOf(key) !== -1 && val !== 1){
+          try { obj[key] = 1; result.count++; result.found.push(path+'.'+key+'='+val+'->1'); } catch(e) {}
         }
-        if(inPagContext && typeof val === 'number' && val > 1 && val <= 200){
-          try { obj[key] = 9999; result.count++; result.found.push(path+'.'+key+'='+val+'->'+obj[key]+'(pagCtx)'); }
-          catch(e) { result.debug.push('FAIL_PAG:'+path+'.'+key+':'+e.message); }
+        if(inPagContext && typeof val === 'number' && val > 1 && val <= 500){
+          try { obj[key] = 9999; result.count++; result.found.push(path+'.'+key+'='+val+'->'+obj[key]+'(ctx)'); }
+          catch(e) {}
         }
         if(typeof val === 'object' && val !== null && !Array.isArray(val) &&
            !(val instanceof HTMLElement) && !(val instanceof Node) &&
@@ -76,40 +75,78 @@
     }
   }
 
-  function findPaginationComponents(allComps){
-    var pagComps = [];
-    for(var i=0; i<allComps.length; i++){
-      var comp = allComps[i];
+  function searchComponentLocalState(comp, idx){
+    var modified = 0;
+    var sources = [];
+    try { if(comp.setupState) sources.push({name:'setupState', data: comp.setupState}); } catch(e){}
+    try { if(comp.data) sources.push({name:'data', data: comp.data}); } catch(e){}
+
+    for(var si=0; si<sources.length; si++){
+      var src = sources[si];
       try {
-        var typeName = '';
-        if(comp.vnode && comp.vnode.type) {
-          if(typeof comp.vnode.type === 'object' && comp.vnode.type.name) typeName = comp.vnode.type.name;
-          else if(typeof comp.vnode.type === 'string') typeName = comp.vnode.type;
+        var keys = safeKeys(src.data);
+        for(var i=0; i<keys.length; i++){
+          var key = keys[i];
+          if(key.startsWith('_') || key.startsWith('$')) continue;
+          try {
+            var val = src.data[key];
+            if(val === undefined || val === null || typeof val === 'function') continue;
+
+            if(typeof val === 'number' && isCommonPageSize(val)){
+              var keyL = key.toLowerCase();
+              var isPagRelated = keyL.indexOf('size') !== -1 || keyL.indexOf('limit') !== -1 ||
+                keyL.indexOf('per') !== -1 || keyL.indexOf('rows') !== -1 || keyL.indexOf('page') !== -1 ||
+                keyL === 'size' || keyL === 'limit' || keyL === 'num' || keyL === 'count';
+              if(isPagRelated){
+                try {
+                  src.data[key] = 9999;
+                  result.count++;
+                  result.found.push('comp['+idx+'].'+src.name+'.'+key+'='+val+'->9999(local)');
+                  modified++;
+                } catch(e) {
+                  result.debug.push('LOCAL_FAIL:comp['+idx+'].'+src.name+'.'+key+':'+e.message);
+                }
+              }
+            }
+
+            if(typeof val === 'object' && val !== null && !Array.isArray(val) &&
+               !(val instanceof HTMLElement) && !(val instanceof Node)){
+              var subKeys = safeKeys(val);
+              for(var j=0; j<subKeys.length; j++){
+                var subKey = subKeys[j];
+                if(subKey.startsWith('_') || subKey.startsWith('$')) continue;
+                try {
+                  var subVal = val[subKey];
+                  if(typeof subVal === 'number' && isCommonPageSize(subVal)){
+                    var subKeyL = subKey.toLowerCase();
+                    var isSubPag = subKeyL.indexOf('size') !== -1 || subKeyL.indexOf('limit') !== -1 ||
+                      subKeyL.indexOf('per') !== -1 || subKeyL.indexOf('rows') !== -1 || subKeyL.indexOf('page') !== -1;
+                    if(isSubPag){
+                      try {
+                        val[subKey] = 9999;
+                        result.count++;
+                        result.found.push('comp['+idx+'].'+src.name+'.'+key+'.'+subKey+'='+subVal+'->9999(local)');
+                if(subKeyL.indexOf('size') !== -1 || subKeyL.indexOf('limit') !== -1 ||
+                       subKeyL.indexOf('per') !== -1 || subKeyL.indexOf('rows') !== -1 || subKeyL.indexOf('page') !== -1){
+                      try {
+                        val[subKey] = 9999;
+                        result.count++;
+                        result.found.push('comp['+idx+'].'+src.name+'.'+key+'.'+subKey+'='+subVal+'->9999(local2)');
+                        modified++;
+                      } catch(e) {}
+                    }
+                  }
+                } catch(e) {}
+              }
+            }
+          } catch(e) {}
         }
-        if(!typeName && comp.type && comp.type.name) typeName = comp.type.name;
-        var nameL = typeName.toLowerCase();
-        if(nameL.indexOf('pagination') !== -1 || nameL.indexOf('pager') !== -1){
-          pagComps.push({comp: comp, name: typeName, index: i});
-          continue;
-        }
-      } catch(e){}
-      try {
-        var props = comp.vnode && comp.vnode.props ? comp.vnode.props : {};
-        var hasPageSize = false;
-        for(var pk in props){
-          if(pk.toLowerCase().indexOf('pagesize') !== -1 || pk.toLowerCase().indexOf('page-size') !== -1 ||
-             pk.toLowerCase().indexOf('pagesize') !== -1 || pk.toLowerCase().indexOf('sizes') !== -1){
-            hasPageSize = true; break;
-          }
-        }
-        if(hasPageSize) pagComps.push({comp: comp, name: 'hasPageSizeProp', index: i});
-      } catch(e){}
+      } catch(e) {}
     }
-    return pagComps;
+    return modified;
   }
 
-  function tryEmitSizeChange(pagComp){
-    var comp = pagComp.comp;
+  function tryEmitSizeChange(comp){
     try {
       if(comp.emit){
         comp.emit('update:page-size', 9999);
@@ -119,36 +156,27 @@
         result.emitCalled.push('emit_size-change_9999');
         return true;
       }
-    } catch(e){
-      result.debug.push('emit_err:'+e.message);
-    }
+    } catch(e){ result.debug.push('emit_err:'+e.message); }
     try {
       var vnode = comp.vnode;
       if(vnode && vnode.props){
-        if(vnode.props['onSize-change']) { vnode.props['onSize-change'](9999); result.emitCalled.push('vnode_onSizeChange_9999'); return true; }
-        if(vnode.props['onSizeChange']) { vnode.props['onSizeChange'](9999); result.emitCalled.push('vnode_onSizeChange_9999'); return true; }
-        if(vnode.props['onUpdate:page-size']) { vnode.props['onUpdate:page-size'](9999); result.emitCalled.push('vnode_onUpdatePageSize_9999'); return true; }
-        if(vnode.props['onUpdate:pageSize']) { vnode.props['onUpdate:pageSize'](9999); result.emitCalled.push('vnode_onUpdatePageSize2_9999'); return true; }
-        for(var pk in vnode.props){
+        var propKeys = safeKeys(vnode.props);
+        for(var i=0; i<propKeys.length; i++){
+          var pk = propKeys[i];
           var pkL = pk.toLowerCase();
           if((pkL.indexOf('size') !== -1 || pkL.indexOf('change') !== -1) && typeof vnode.props[pk] === 'function'){
             try { vnode.props[pk](9999); result.emitCalled.push('vnode_'+pk+'_9999'); return true; } catch(e){}
           }
         }
       }
-    } catch(e){
-      result.debug.push('vnode_emit_err:'+e.message);
-    }
+    } catch(e){ result.debug.push('vnode_emit_err:'+e.message); }
     return false;
   }
 
-  function tryCallFetchOnParent(pagComp, allComps){
-    var comp = pagComp.comp;
-    var parent = comp.parent;
-    if(!parent) return false;
+  function tryCallFetch(comp, idx, label){
     var sources = [];
-    try { if(parent.setupState) sources.push({name: 'setupState', data: parent.setupState}); } catch(e){}
-    try { if(parent.proxy) sources.push({name: 'proxy', data: parent.proxy}); } catch(e){}
+    try { if(comp.setupState) sources.push({name:'setupState', data: comp.setupState}); } catch(e){}
+    try { if(comp.proxy) sources.push({name:'proxy', data: comp.proxy}); } catch(e){}
     for(var si=0; si<sources.length; si++){
       var src = sources[si];
       try {
@@ -160,50 +188,18 @@
           if(ml.indexOf('fetch') !== -1 || ml.indexOf('load') !== -1 || ml.indexOf('query') !== -1 ||
              ml.indexOf('search') !== -1 || ml.indexOf('refresh') !== -1 || ml.indexOf('reload') !== -1 ||
              ml.indexOf('getlist') !== -1 || ml.indexOf('getdata') !== -1 || ml.indexOf('gettable') !== -1 ||
-             ml.indexOf('getpage') !== -1 || ml.indexOf('init') !== -1){
+             ml.indexOf('getpage') !== -1 || ml.indexOf('handlesearch') !== -1 || ml.indexOf('handlequery') !== -1 ||
+             ml.indexOf('onsearch') !== -1 || ml.indexOf('onquery') !== -1 || ml.indexOf('submit') !== -1){
             try {
               src.data[mname]();
-              result.fetchCalled.push('parent.'+src.name+'.'+mname);
+              result.fetchCalled.push(label+'.'+src.name+'.'+mname);
               return true;
             } catch(e){
-              result.debug.push('parent_fetch_err:'+mname+':'+e.message);
+              result.debug.push('fetch_err:'+label+'.'+mname+':'+e.message);
             }
           }
         }
       } catch(e){}
-    }
-    return false;
-  }
-
-  function tryCallFetchAny(allComps){
-    for(var ci=0; ci<allComps.length; ci++){
-      var comp = allComps[ci];
-      var sources = [];
-      try { if(comp.setupState) sources.push({name: 'setupState', data: comp.setupState}); } catch(e){}
-      try { if(comp.proxy) sources.push({name: 'proxy', data: comp.proxy}); } catch(e){}
-      for(var si=0; si<sources.length; si++){
-        var src = sources[si];
-        try {
-          var srcKeys = safeKeys(src.data);
-          for(var fi=0; fi<srcKeys.length; fi++){
-            var mname = srcKeys[fi];
-            if(typeof src.data[mname] !== 'function') continue;
-            var ml = mname.toLowerCase();
-            if(ml.indexOf('fetch') !== -1 || ml.indexOf('load') !== -1 || ml.indexOf('query') !== -1 ||
-               ml.indexOf('search') !== -1 || ml.indexOf('refresh') !== -1 || ml.indexOf('reload') !== -1 ||
-               ml.indexOf('getlist') !== -1 || ml.indexOf('getdata') !== -1 || ml.indexOf('gettable') !== -1 ||
-               ml.indexOf('getpage') !== -1){
-              try {
-                src.data[mname]();
-                result.fetchCalled.push('comp['+ci+'].'+src.name+'.'+mname);
-                return true;
-              } catch(e){
-                result.debug.push('fetch_err:'+mname+':'+e.message);
-              }
-            }
-          }
-        } catch(e){}
-      }
     }
     return false;
   }
@@ -261,7 +257,6 @@
   result.debug.push('app:' + (app ? 'found' : 'not_found'));
 
   var allComps = [];
-  var rootComp = null;
 
   if(app){
     try {
@@ -285,11 +280,76 @@
         pinia._s.forEach(function(store, sn){
           result.storeDetail.push(dumpStoreStructure(store, sn));
         });
+
+        // Use $patch to properly trigger Pinia reactivity
+        pinia._s.forEach(function(store, sn){
+          try {
+            var state = store.$state;
+            if(!state) return;
+            var keys = safeKeys(state);
+            for(var i=0; i<keys.length; i++){
+              var key = keys[i];
+              try {
+                var val = state[key];
+                if(typeof val === 'object' && val !== null && !Array.isArray(val)){
+                  var subKeys = safeKeys(val);
+                  for(var j=0; j<subKeys.length; j++){
+                    var subKey = subKeys[j];
+                    try {
+                      var subVal = val[subKey];
+                      if(typeof subVal === 'object' && subVal !== null && !Array.isArray(subVal)){
+                        var subSubKeys = safeKeys(subVal);
+                        for(var k=0; k<subSubKeys.length; k++){
+                          var ssk = subSubKeys[k];
+                          if(pageSizeNames.indexOf(ssk) !== -1 && typeof subVal[ssk] === 'number' && subVal[ssk] < 9999){
+                            var oldVal = subVal[ssk];
+                            try {
+                              store.$patch(function(state){
+                                if(state[key] && state[key][subKey]) state[key][subKey][ssk] = 9999;
+                              });
+                              result.count++;
+                              result.found.push(sn+'.$patch.'+key+'.'+subKey+'.'+ssk+'='+oldVal+'->9999');
+                            } catch(e){
+                              subVal[ssk] = 9999;
+                              result.count++;
+                              result.found.push(sn+'.direct.'+key+'.'+subKey+'.'+ssk+'='+oldVal+'->9999');
+                            }
+                          }
+                          if(pageNumNames.indexOf(ssk) !== -1 && typeof subVal[ssk] === 'number' && subVal[ssk] !== 1){
+                            var oldVal2 = subVal[ssk];
+                            try {
+                              store.$patch(function(state){
+                                if(state[key] && state[key][subKey]) state[key][subKey][ssk] = 1;
+                              });
+                              result.count++;
+                              result.found.push(sn+'.$patch.'+key+'.'+subKey+'.'+ssk+'='+oldVal2+'->1');
+                            } catch(e){
+                              subVal[ssk] = 1;
+                              result.count++;
+                              result.found.push(sn+'.direct.'+key+'.'+subKey+'.'+ssk+'='+oldVal2+'->1');
+                            }
+                          }
+                        }
+                      }
+                    } catch(e) {}
+                  }
+                }
+              } catch(e) {}
+            }
+          } catch(e) {}
+        });
       }
     } catch(e){ result.debug.push('pinia_err:' + e.message); }
+
+    // Search component local state for pageSize values
+    var localModified = 0;
+    for(var ci=0; ci<allComps.length; ci++){
+      localModified += searchComponentLocalState(allComps[ci], ci);
+    }
+    result.debug.push('localStateModified:' + localModified);
   }
 
-  // Phase 1: el-select DOM interaction first (triggers proper Vue event chain)
+  // el-select DOM interaction
   try {
     var pagSelectors = '.el-pagination, .ant-pagination, [class*="pagination"], [class*="Pagination"]';
     var pagSels = document.querySelectorAll(pagSelectors);
@@ -341,9 +401,10 @@
     }
   } catch(e){ result.debug.push('dom_err:' + e.message); }
 
-  // Phase 2: Wait for el-select event to propagate, then modify store to 9999
+  // Wait for el-select events to propagate
   await new Promise(function(r){ setTimeout(r, 500); });
 
+  // Re-apply store modifications (el-select may have overwritten them)
   if(app){
     try {
       var pinia = app.config.globalProperties.$pinia;
@@ -351,43 +412,92 @@
         pinia._s.forEach(function(store, sn){
           try {
             var state = store.$state;
-            if(state) deepSearch(state, 0, sn+'.$state');
+            if(!state) return;
+            var keys = safeKeys(state);
+            for(var i=0; i<keys.length; i++){
+              var key = keys[i];
+              try {
+                var val = state[key];
+                if(typeof val === 'object' && val !== null && !Array.isArray(val)){
+                  var subKeys = safeKeys(val);
+                  for(var j=0; j<subKeys.length; j++){
+                    var subKey = subKeys[j];
+                    try {
+                      var subVal = val[subKey];
+                      if(typeof subVal === 'object' && subVal !== null && !Array.isArray(subVal)){
+                        var subSubKeys = safeKeys(subVal);
+                        for(var k=0; k<subSubKeys.length; k++){
+                          var ssk = subSubKeys[k];
+                          if(pageSizeNames.indexOf(ssk) !== -1 && typeof subVal[ssk] === 'number' && subVal[ssk] < 9999){
+                            try { subVal[ssk] = 9999; result.count++; result.found.push(sn+'.reapply.'+key+'.'+subKey+'.'+ssk+'->9999'); } catch(e){}
+                          }
+                        }
+                      }
+                    } catch(e) {}
+                  }
+                }
+              } catch(e) {}
+            }
           } catch(e) {}
         });
       }
     } catch(e) {}
 
-    // Phase 3: Find el-pagination component and emit size-change with 9999
-    if(allComps.length > 0){
-      var pagComps = findPaginationComponents(allComps);
-      result.debug.push('pagComps_found:' + pagComps.length);
-      for(var pi=0; pi<pagComps.length; pi++){
-        result.debug.push('pagComp['+pi+']:'+pagComps[pi].name);
-        tryEmitSizeChange(pagComps[pi]);
-        tryCallFetchOnParent(pagComps[pi], allComps);
-      }
+    // Re-apply component local state modifications
+    for(var ci=0; ci<allComps.length; ci++){
+      searchComponentLocalState(allComps[ci], ci);
+    }
 
-      // Phase 4: Try to call fetch on any component
-      if(result.fetchCalled.length === 0){
-        tryCallFetchAny(allComps);
-      }
-
-      // Phase 5: If still no fetch, list all methods for debugging
-      if(result.fetchCalled.length === 0 && result.emitCalled.length === 0){
-        result.debug.push('no_emit_no_fetch');
-        for(var ci=0; ci<Math.min(allComps.length, 15); ci++){
-          var comp = allComps[ci];
-          var methods = [];
-          try {
-            var sk = safeKeys(comp.setupState);
-            for(var mi=0; mi<sk.length; mi++){
-              if(typeof comp.setupState[sk[mi]] === 'function' && sk[mi].charAt(0) !== '_'){
-                methods.push(sk[mi]);
-              }
-            }
-          } catch(e){}
-          if(methods.length > 0) result.debug.push('comp['+ci+']_methods:'+methods.slice(0,20).join(','));
+    // Find el-pagination components and emit size-change
+    var pagComps = [];
+    for(var ci=0; ci<allComps.length; ci++){
+      var comp = allComps[ci];
+      try {
+        var typeName = '';
+        if(comp.vnode && comp.vnode.type) {
+          if(typeof comp.vnode.type === 'object' && comp.vnode.type.name) typeName = comp.vnode.type.name;
+          else if(typeof comp.vnode.type === 'string') typeName = comp.vnode.type;
         }
+        if(!typeName && comp.type && comp.type.name) typeName = comp.type.name;
+        var nameL = typeName.toLowerCase();
+        if(nameL.indexOf('pagination') !== -1 || nameL.indexOf('pager') !== -1){
+          pagComps.push({comp: comp, name: typeName, index: ci});
+        }
+      } catch(e){}
+    }
+    result.debug.push('pagComps_found:' + pagComps.length);
+
+    for(var pi=0; pi<pagComps.length; pi++){
+      result.debug.push('pagComp['+pi+']:'+pagComps[pi].name);
+      tryEmitSizeChange(pagComps[pi].comp);
+      // Try fetch on parent
+      if(pagComps[pi].comp.parent){
+        tryCallFetch(pagComps[pi].comp.parent, pagComps[pi].index, 'parent');
+      }
+    }
+
+    // Try fetch on all components
+    if(result.fetchCalled.length === 0){
+      for(var ci=0; ci<allComps.length; ci++){
+        if(tryCallFetch(allComps[ci], ci, 'comp['+ci+']')) break;
+      }
+    }
+
+    // Debug: list component methods if no fetch found
+    if(result.fetchCalled.length === 0){
+      result.debug.push('no_fetch_found_listing_methods');
+      for(var ci=0; ci<Math.min(allComps.length, 20); ci++){
+        var comp = allComps[ci];
+        var methods = [];
+        try {
+          var sk = safeKeys(comp.setupState);
+          for(var mi=0; mi<sk.length; mi++){
+            if(typeof comp.setupState[sk[mi]] === 'function' && sk[mi].charAt(0) !== '_'){
+              methods.push(sk[mi]);
+            }
+          }
+        } catch(e){}
+        if(methods.length > 0) result.debug.push('comp['+ci+']:'+methods.slice(0,20).join(','));
       }
     }
   }
