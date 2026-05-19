@@ -39,18 +39,14 @@ export function ScraperTool() {
           setPaginationMsg(`📄 分页展开: 修改${pr.count}项 ${pr.info ? '(' + pr.info + ')' : ''}`)
         } else {
           const parts: string[] = []
-          if (pr.storeDetail) {
-            const lines = pr.storeDetail.split('\n')
-            const themeConfigLine = lines.find(l => l.startsWith('themeConfig:'))
-            if (themeConfigLine) parts.push(themeConfigLine)
-            else parts.push('Store: ' + lines.slice(0, 5).join('; '))
-          }
           if (pr.domActions) parts.push('DOM: ' + pr.domActions)
           if (pr.debug) {
-            const debugLines = pr.debug.split('; ').filter(d => d.startsWith('el_select') || d.startsWith('FAIL') || d.startsWith('store_search'))
-            if (debugLines.length > 0) parts.push('调试: ' + debugLines.join(', '))
+            const debugLines = pr.debug.split('; ').filter(d =>
+              d.startsWith('step') || d.startsWith('el_select') || d.startsWith('pagComp') || d.startsWith('no_')
+            )
+            if (debugLines.length > 0) parts.push(debugLines.slice(0, 5).join(', '))
           }
-          setPaginationMsg(`📄 分页展开: 未找到分页属性 ${parts.length > 0 ? '(' + parts.join(' | ') + ')' : ''}`)
+          setPaginationMsg(`📄 分页展开: 未生效 ${parts.length > 0 ? '(' + parts.join(' | ') + ')' : ''}`)
         }
       }
     } catch (e) {
