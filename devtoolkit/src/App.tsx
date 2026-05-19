@@ -81,12 +81,12 @@ export default function App() {
         </div>
       </header>
       <div className={styles.body}>
-        <ToolNav />
         <main className={styles.content}>
           <Suspense fallback={<div className={styles.loading}>加载中...</div>}>
             <ActiveComponent />
           </Suspense>
         </main>
+        <ToolNav />
         {historyOpen && <HistoryPanel />}
       </div>
     </div>
