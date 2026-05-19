@@ -34,6 +34,46 @@
     }
   }
 
+  function findElSelectComponents(allComps){
+    var selects = [];
+    for(var i=0; i<allComps.length; i++){
+      var comp = allComps[i];
+      try {
+        var typeName = '';
+        if(comp.vnode && comp.vnode.type) {
+          if(typeof comp.vnode.type === 'object' && comp.vnode.type.name) typeName = comp.vnode.type.name;
+          else if(typeof comp.vnode.type === 'string') typeName = comp.vnode.type;
+        }
+        if(!typeName && comp.type && comp.type.name) typeName = comp.type.name;
+        var nameL = typeName.toLowerCase();
+        if(nameL.indexOf('select') !== -1 || nameL === 'elselect' || nameL === 'elselectwrapper'){
+          selects.push({comp: comp, name: typeName, index: i});
+        }
+      } catch(e){}
+    }
+    return selects;
+  }
+
+  function findPaginationComponents(allComps){
+    var pags = [];
+    for(var i=0; i<allComps.length; i++){
+      var comp = allComps[i];
+      try {
+        var typeName = '';
+        if(comp.vnode && comp.vnode.type) {
+          if(typeof comp.vnode.type === 'object' && comp.vnode.type.name) typeName = comp.vnode.type.name;
+          else if(typeof comp.vnode.type === 'string') typeName = comp.vnode.type;
+        }
+        if(!typeName && comp.type && comp.type.name) typeName = comp.type.name;
+        var nameL = typeName.toLowerCase();
+        if(nameL.indexOf('pagination') !== -1 || nameL.indexOf('pager') !== -1){
+          pags.push({comp: comp, name: typeName, index: i});
+        }
+      } catch(e){}
+    }
+    return pags;
+  }
+
   var app = findApp();
   result.debug.push('app:' + (app ? 'found' : 'not_found'));
 
@@ -49,117 +89,151 @@
     } catch(e){ result.debug.push('comp_err:' + e.message); }
   }
 
-  // Find el-pagination components in Vue tree
-  var pagComps = [];
-  for(var ci=0; ci<allComps.length; ci++){
-    var comp = allComps[ci];
-    try {
-      var typeName = '';
-      if(comp.vnode && comp.vnode.type) {
-        if(typeof comp.vnode.type === 'object' && comp.vnode.type.name) typeName = comp.vnode.type.name;
-        else if(typeof comp.vnode.type === 'string') typeName = comp.vnode.type;
-      }
-      if(!typeName && comp.type && comp.type.name) typeName = comp.type.name;
-      var nameL = typeName.toLowerCase();
-      if(nameL.indexOf('pagination') !== -1 || nameL.indexOf('pager') !== -1){
-        pagComps.push({comp: comp, name: typeName, index: ci});
-      }
-    } catch(e){}
-  }
-  result.debug.push('pagComps:' + pagComps.length);
+  // Strategy: Find el-select Vue component inside el-pagination__sizes,
+  // then directly call its internal methods to set value to 9999
 
-  // Strategy: Inject a "9999 条/页" option into el-select dropdown and click it
+  // Step 1: Find el-pagination DOM elements and their associated el-select Vue components
   try {
-    var pagSelectors = '.el-pagination, .ant-pagination, [class*="pagination"], [class*="Pagination"]';
-    var pagSels = document.querySelectorAll(pagSelectors);
+    var pagSels = document.querySelectorAll('.el-pagination, [class*="pagination"]');
     result.debug.push('dom_pag:' + pagSels.length);
 
     for(var i=0; i<pagSels.length; i++){
       var sizesArea = pagSels[i].querySelector('.el-pagination__sizes');
       if(!sizesArea) continue;
 
-      var elSelects = sizesArea.querySelectorAll('.el-select');
-      for(var j=0; j<elSelects.length; j++){
+      var elSelectDoms = sizesArea.querySelectorAll('.el-select');
+      for(var j=0; j<elSelectDoms.length; j++){
         try {
-          // Step 1: Click to open dropdown
-          var wrapper = elSelects[j].querySelector('.el-select__wrapper');
-          if(!wrapper) wrapper = elSelects[j].querySelector('.el-input__wrapper');
-          if(!wrapper) wrapper = elSelects[j];
-          wrapper.click();
-          result.debug.push('step1_click_trigger:'+i+':'+j);
-
-          // Step 2: Wait for dropdown to appear
-          var dropdownEl = null;
-          var dropdownItems = [];
-          for(var wait=0; wait<15; wait++){
-            await new Promise(function(r){ setTimeout(r, 200); });
-            var poppers = document.querySelectorAll('.el-select-dropdown, .el-popper');
-            for(var k=0; k<poppers.length; k++){
-              var popper = poppers[k];
-              var style = window.getComputedStyle(popper);
-              if(style.display === 'none' || style.visibility === 'hidden') continue;
-              var items = popper.querySelectorAll('.el-select-dropdown__item');
-              if(items.length === 0) continue;
-              dropdownEl = popper;
-              dropdownItems = items;
-              break;
-            }
-            if(dropdownEl) break;
+          // Find the Vue component instance for this el-select DOM element
+          var selectComp = null;
+          var el = elSelectDoms[j];
+          // Walk up the DOM to find an element with __vueParentComponent or traverse component tree
+          // Method 1: Check __vueParentComponent on DOM elements
+          var checkEl = el;
+          while(checkEl && !selectComp){
+            try {
+              if(checkEl.__vueParentComponent) selectComp = checkEl.__vueParentComponent;
+            } catch(e){}
+            checkEl = checkEl.firstElementChild || checkEl.firstChild;
           }
 
-          if(!dropdownEl){
-            result.debug.push('step2_no_dropdown:'+i+':'+j);
+          // Method 2: Find el-select component by matching DOM element to component $el
+          if(!selectComp){
+            var elSelectComps = findElSelectComponents(allComps);
+            for(var k=0; k<elSelectComps.length; k++){
+              try {
+                var compEl = elSelectComps[k].comp.proxy && elSelectComps[k].comp.proxy.$el;
+                if(compEl && (compEl === el || el.contains(compEl) || compEl.contains(el))){
+                  selectComp = elSelectComps[k].comp;
+                  result.debug.push('select_found_by_dom:'+k);
+                  break;
+                }
+              } catch(e){}
+            }
+          }
+
+          if(!selectComp){
+            // Method 3: Find el-select component inside pagination component's subtree
+            var pagComps = findPaginationComponents(allComps);
+            result.debug.push('pagComps:' + pagComps.length);
+            for(var k=0; k<pagComps.length; k++){
+              var pagSubComps = [];
+              collectComponents(pagComps[k].comp, 0, pagSubComps);
+              var innerSelects = findElSelectComponents(pagSubComps);
+              if(innerSelects.length > 0){
+                selectComp = innerSelects[0].comp;
+                result.debug.push('select_found_in_pag:'+k+':inner='+innerSelects.length);
+                break;
+              }
+            }
+          }
+
+          if(!selectComp){
+            result.debug.push('no_select_comp:'+i+':'+j);
             continue;
           }
-          result.debug.push('step2_dropdown_found:items='+dropdownItems.length);
 
-          // Step 3: Check if 9999 option already exists
-          var existing9999 = null;
-          for(var k=0; k<dropdownItems.length; k++){
-            var txt = dropdownItems[k].textContent.trim();
-            if(txt === '9999' || txt === '9999 条/页' || txt.indexOf('9999') !== -1){
-              existing9999 = dropdownItems[k];
-              break;
+          result.debug.push('select_comp_found:'+i+':'+j);
+
+          // Step 2: Inspect el-select component's internal state
+          var setupKeys = [];
+          try { setupKeys = safeKeys(selectComp.setupState); } catch(e){}
+          result.debug.push('select_setupKeys:'+setupKeys.slice(0,20).join(','));
+
+          // Step 3: Try to set value through the component's emit
+          // el-select emits 'update:modelValue' and 'change' when a value is selected
+          try {
+            selectComp.emit('update:modelValue', 9999);
+            selectComp.emit('change', 9999);
+            result.count++;
+            result.found.push('select.emit(update:modelValue+change, 9999)');
+            result.domActions.push('emit_modelValue_9999');
+            result.debug.push('emit_modelValue_9999');
+          } catch(e){
+            result.debug.push('emit_err:'+e.message);
+          }
+
+          // Step 4: Also try setting through vnode props (the parent's event handlers)
+          try {
+            if(selectComp.vnode && selectComp.vnode.props){
+              var propKeys = safeKeys(selectComp.vnode.props);
+              result.debug.push('select_vnode_props:'+propKeys.join(','));
+              for(var pk=0; pk<propKeys.length; pk++){
+                var pKey = propKeys[pk];
+                if(typeof selectComp.vnode.props[pKey] === 'function'){
+                  var pKeyL = pKey.toLowerCase();
+                  if(pKeyL.indexOf('model') !== -1 || pKeyL.indexOf('change') !== -1 || pKeyL.indexOf('update') !== -1){
+                    try {
+                      selectComp.vnode.props[pKey](9999);
+                      result.count++;
+                      result.found.push('select.vnode.props.'+pKey+'(9999)');
+                      result.domActions.push('vnode_'+pKey+'_9999');
+                      result.debug.push('vnode_call:'+pKey);
+                    } catch(e){
+                      result.debug.push('vnode_err:'+pKey+':'+e.message);
+                    }
+                  }
+                }
+              }
             }
+          } catch(e){ result.debug.push('vnode_inspect_err:'+e.message); }
+
+          // Step 5: Try to directly modify internal reactive state
+          try {
+            for(var si=0; si<setupKeys.length; si++){
+              var key = setupKeys[si];
+              try {
+                var val = selectComp.setupState[key];
+                // Look for the modelValue or currentValue
+                if(key === 'modelValue' || key === 'currentValue' || key === 'value' ||
+                   key === 'selectedValue' || key === 'innerValue'){
+                  if(typeof val === 'number' && val < 9999){
+                    selectComp.setupState[key] = 9999;
+                    result.count++;
+                    result.found.push('select.setupState.'+key+'='+val+'->9999');
+                    result.debug.push('set_internal:'+key+'->9999');
+                  }
+                }
+              } catch(e){}
+            }
+          } catch(e){}
+
+          // Step 6: Try the proxy's $emit
+          try {
+            if(selectComp.proxy){
+              selectComp.proxy.$emit('update:modelValue', 9999);
+              selectComp.proxy.$emit('change', 9999);
+              result.count++;
+              result.found.push('select.proxy.$emit(9999)');
+              result.domActions.push('proxy_emit_9999');
+              result.debug.push('proxy_emit_9999');
+            }
+          } catch(e){
+            result.debug.push('proxy_emit_err:'+e.message);
           }
-
-          if(existing9999){
-            // Click existing 9999 option
-            existing9999.click();
-            result.count++;
-            result.found.push('DOM:click_existing_9999');
-            result.domActions.push('click_existing_9999');
-            result.debug.push('step3_click_existing_9999');
-          } else {
-            // Step 4: Inject a new 9999 option into the dropdown
-            var newItem = document.createElement('li');
-            newItem.className = 'el-select-dropdown__item';
-            newItem.setAttribute('data-value', '9999');
-            newItem.textContent = '9999 条/页';
-
-            // Find the scroll container inside the dropdown
-            var scrollWrap = dropdownEl.querySelector('.el-scrollbar__wrap');
-            var listContainer = scrollWrap ? scrollWrap.querySelector('.el-select-dropdown__list') : null;
-            if(!listContainer) listContainer = dropdownEl.querySelector('.el-select-dropdown__list');
-            if(!listContainer) listContainer = dropdownEl;
-
-            listContainer.appendChild(newItem);
-            result.debug.push('step4_injected_9999_option');
-
-            // Step 5: Click the injected 9999 option
-            await new Promise(function(r){ setTimeout(r, 100); });
-            newItem.click();
-            result.count++;
-            result.found.push('DOM:inject_and_click_9999');
-            result.domActions.push('inject_click_9999');
-            result.debug.push('step5_clicked_injected_9999');
-          }
-
-          // Step 6: Wait for Vue to process the event
-          await new Promise(function(r){ setTimeout(r, 500); });
 
         } catch(e){
-          result.debug.push('el_select_err:'+i+':'+j+':'+e.message);
+          result.debug.push('select_err:'+i+':'+j+':'+e.message);
         }
       }
     }
@@ -167,108 +241,93 @@
     result.debug.push('dom_err:' + e.message);
   }
 
-  // Also try: find el-pagination Vue component and directly call its internal methods
-  if(pagComps.length > 0 && result.count === 0){
+  // Also try: find el-pagination component and emit size-change directly
+  try {
+    var pagComps = findPaginationComponents(allComps);
+    result.debug.push('pagComps2:' + pagComps.length);
+
     for(var pi=0; pi<pagComps.length; pi++){
       var pagComp = pagComps[pi].comp;
       try {
-        // Try to find the internal pageSize ref and set it
-        var sources = [];
-        try { if(pagComp.setupState) sources.push({name:'setupState', data: pagComp.setupState}); } catch(e){}
-        try { if(pagComp.data) sources.push({name:'data', data: pagComp.data}); } catch(e){}
+        // Emit on the pagination component
+        pagComp.emit('update:page-size', 9999);
+        pagComp.emit('size-change', 9999);
+        pagComp.emit('update:currentPage', 1);
+        pagComp.emit('current-change', 1);
+        result.count++;
+        result.found.push('pagComp.emit(size-change, 9999)');
+        result.domActions.push('pag_emit_size-change_9999');
+        result.debug.push('pag_emit_done');
+      } catch(e){ result.debug.push('pag_emit_err:'+e.message); }
 
-        for(var si=0; si<sources.length; si++){
-          var src = sources[si];
-          try {
-            var keys = safeKeys(src.data);
-            result.debug.push('pagComp['+pi+'].'+src.name+':'+keys.slice(0,15).join(','));
-            for(var ki=0; ki<keys.length; ki++){
-              var key = keys[ki];
-              try {
-                var val = src.data[key];
-                if(typeof val === 'number' && (key === 'pageSize' || key === 'internalPageSize' || key === 'innerPageSize')){
-                  if(val < 9999){
-                    src.data[key] = 9999;
+      // Try vnode props on pagination
+      try {
+        if(pagComp.vnode && pagComp.vnode.props){
+          var propKeys = safeKeys(pagComp.vnode.props);
+          for(var pk=0; pk<propKeys.length; pk++){
+            var pKey = propKeys[pk];
+            if(typeof pagComp.vnode.props[pKey] === 'function'){
+              var pKeyL = pKey.toLowerCase();
+              if(pKeyL.indexOf('size') !== -1 || pKeyL.indexOf('change') !== -1 || pKeyL.indexOf('update') !== -1){
+                try {
+                  if(pKeyL.indexOf('page') !== -1 || pKeyL.indexOf('size') !== -1){
+                    pagComp.vnode.props[pKey](9999);
                     result.count++;
-                    result.found.push('pagComp['+pi+'].'+src.name+'.'+key+'='+val+'->9999');
-                    result.debug.push('pagComp_set:'+key+'->9999');
+                    result.found.push('pagComp.vnode.'+pKey+'(9999)');
+                    result.domActions.push('pag_vnode_'+pKey+'_9999');
+                    result.debug.push('pag_vnode_call:'+pKey);
                   }
+                  if(pKeyL.indexOf('current') !== -1){
+                    pagComp.vnode.props[pKey](1);
+                    result.debug.push('pag_vnode_current:'+pKey+'->1');
+                  }
+                } catch(e){}
+              }
+            }
+          }
+        }
+      } catch(e){}
+
+      // Try parent component fetch
+      if(pagComp.parent){
+        var parentSources = [];
+        try { if(pagComp.parent.setupState) parentSources.push({name:'setupState', data: pagComp.parent.setupState}); } catch(e){}
+        try { if(pagComp.parent.proxy) parentSources.push({name:'proxy', data: pagComp.parent.proxy}); } catch(e){}
+
+        for(var si=0; si<parentSources.length; si++){
+          var pSrc = parentSources[si];
+          try {
+            var pKeys = safeKeys(pSrc.data);
+            result.debug.push('parent.'+pSrc.name+':'+pKeys.slice(0,25).join(','));
+            for(var ki=0; ki<pKeys.length; ki++){
+              var mname = pKeys[ki];
+              if(typeof pSrc.data[mname] !== 'function') continue;
+              var ml = mname.toLowerCase();
+              if(ml.indexOf('fetch') !== -1 || ml.indexOf('load') !== -1 || ml.indexOf('query') !== -1 ||
+                 ml.indexOf('search') !== -1 || ml.indexOf('refresh') !== -1 || ml.indexOf('reload') !== -1 ||
+                 ml.indexOf('getlist') !== -1 || ml.indexOf('getdata') !== -1 || ml.indexOf('gettable') !== -1 ||
+                 ml.indexOf('getpage') !== -1 || ml.indexOf('handlesearch') !== -1 || ml.indexOf('handlequery') !== -1 ||
+                 ml.indexOf('handlesizechange') !== -1 || ml.indexOf('handlecurrentchange') !== -1){
+                try {
+                  pSrc.data[mname]();
+                  result.count++;
+                  result.found.push('parent.'+pSrc.name+'.'+mname+'()');
+                  result.domActions.push('parent_fetch:'+mname);
+                  result.debug.push('parent_fetch:'+mname);
+                } catch(e){
+                  result.debug.push('parent_fetch_err:'+mname+':'+e.message);
                 }
-              } catch(e){}
+              }
             }
           } catch(e){}
         }
-
-        // Try emit
-        if(pagComp.emit){
-          pagComp.emit('update:page-size', 9999);
-          pagComp.emit('size-change', 9999);
-          pagComp.emit('update:currentPage', 1);
-          pagComp.emit('current-change', 1);
-          result.count++;
-          result.found.push('pagComp_emit_size-change_9999');
-          result.debug.push('pagComp_emit_done');
-        }
-
-        // Try vnode props
-        if(pagComp.vnode && pagComp.vnode.props){
-          var propKeys = safeKeys(pagComp.vnode.props);
-          result.debug.push('pagComp_vnode_props:'+propKeys.join(','));
-          for(var pk=0; pk<propKeys.length; pk++){
-            var pKey = propKeys[pk];
-            var pKeyL = pKey.toLowerCase();
-            if((pKeyL.indexOf('size') !== -1 || pKeyL.indexOf('change') !== -1) && typeof pagComp.vnode.props[pKey] === 'function'){
-              try {
-                pagComp.vnode.props[pKey](9999);
-                result.count++;
-                result.found.push('pagComp_vnode_'+pKey+'_9999');
-                result.debug.push('pagComp_vnode_call:'+pKey);
-              } catch(e){}
-            }
-          }
-        }
-
-        // Try parent component fetch
-        if(pagComp.parent){
-          var parentSources = [];
-          try { if(pagComp.parent.setupState) parentSources.push({name:'setupState', data: pagComp.parent.setupState}); } catch(e){}
-          try { if(pagComp.parent.proxy) parentSources.push({name:'proxy', data: pagComp.parent.proxy}); } catch(e){}
-
-          for(var si=0; si<parentSources.length; si++){
-            var pSrc = parentSources[si];
-            try {
-              var pKeys = safeKeys(pSrc.data);
-              result.debug.push('parent.'+pSrc.name+':'+pKeys.slice(0,20).join(','));
-              for(var ki=0; ki<pKeys.length; ki++){
-                var mname = pKeys[ki];
-                if(typeof pSrc.data[mname] !== 'function') continue;
-                var ml = mname.toLowerCase();
-                if(ml.indexOf('fetch') !== -1 || ml.indexOf('load') !== -1 || ml.indexOf('query') !== -1 ||
-                   ml.indexOf('search') !== -1 || ml.indexOf('refresh') !== -1 || ml.indexOf('reload') !== -1 ||
-                   ml.indexOf('getlist') !== -1 || ml.indexOf('getdata') !== -1 || ml.indexOf('gettable') !== -1 ||
-                   ml.indexOf('getpage') !== -1 || ml.indexOf('handlesearch') !== -1 || ml.indexOf('handlequery') !== -1){
-                  try {
-                    pSrc.data[mname]();
-                    result.count++;
-                    result.found.push('parent.'+pSrc.name+'.'+mname);
-                    result.debug.push('parent_fetch:'+mname);
-                  } catch(e){
-                    result.debug.push('parent_fetch_err:'+mname+':'+e.message);
-                  }
-                }
-              }
-            } catch(e){}
-          }
-        }
-      } catch(e){
-        result.debug.push('pagComp_err:'+e.message);
       }
     }
-  }
+  } catch(e){ result.debug.push('pag_err:' + e.message); }
 
-  // Fallback: list component methods for debugging
+  // Fallback: list component methods
   if(result.count === 0){
-    result.debug.push('no_changes_listing_methods');
+    result.debug.push('no_changes_listing');
     for(var ci=0; ci<Math.min(allComps.length, 20); ci++){
       var comp = allComps[ci];
       var methods = [];
